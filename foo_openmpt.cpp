@@ -18,9 +18,7 @@
 // Since foobar2000 v1.0 having at least one of these in your DLL is mandatory to let the troubleshooter tell different versions of your component apart.
 // Note that it is possible to declare multiple components within one DLL, but it's strongly recommended to keep only one declaration per DLL.
 // As for 1.1, the version numbers are used by the component update finder to find updates; for that to work, you must have ONLY ONE declaration per DLL. If there are multiple declarations, the component is assumed to be outdated and a version number of "0" is assumed, to overwrite the component with whatever is currently on the site assuming that it comes with proper version numbers.
-DECLARE_COMPONENT_VERSION("OpenMPT component", OPENMPT_API_VERSION_STRING ,"libopenmpt based module file player");
-
-
+DECLARE_COMPONENT_VERSION("OpenMPT component", OPENMPT_API_VERSION_STRING "-" __TIMESTAMP__,"libopenmpt based module file player");
 
 // This will prevent users from renaming your component around (important for proper troubleshooter behaviors) or loading multiple instances of it.
 VALIDATE_COMPONENT_FILENAME("foo_openmpt.dll");
@@ -120,6 +118,9 @@ struct foo_openmpt_settings {
 		}
 		
 		interpolationfilterlength = static_cast<int>( cfg_filter.get() );
+		if (interpolationfilterlength == 0) {
+			interpolationfilterlength = 1;
+		}
 
 		use_amiga_resampler = cfg_amiga.get();
 		
@@ -161,7 +162,25 @@ static void g_push_archive_extensions(std::vector<std::string> & list)
     }
 }
 
-// No inheritance. Our methods get called over input framework templates. See input_singletrack_impl for descriptions of what each method does.
+static const char field_patterns[] = "mod_patterns";
+static const char field_orders[] = "mod_orders";
+static const char field_channels[] = "mod_channels";
+static const char field_samples[] = "mod_samples";
+static const char field_instruments[] = "mod_instruments";
+
+static const char field_sample[] = "smpl";
+static const char field_instrument[] = "inst";
+static const char field_pattern[] = "patt";
+static const char field_channel[] = "chan";
+
+static const char field_dyn_order[] = "mod_dyn_order";
+static const char field_dyn_pattern[] = "mod_dyn_pattern";
+static const char field_dyn_row[] = "mod_dyn_row";
+static const char field_dyn_speed[] = "mod_dyn_speed";
+static const char field_dyn_tempo[] = "mod_dyn_tempo";
+static const char field_dyn_channels[] = "mod_dyn_channels";
+static const char field_dyn_channels_max[] = "mod_dyn_channels_max";
+
 class input_openmpt : public input_stubs {
 public:
 	void open(service_ptr_t<file> p_filehint,const char * p_path,t_input_open_reason p_reason,abort_callback & p_abort) {
@@ -210,9 +229,12 @@ public:
 	}
     void get_info(t_uint32 p_subsong,file_info & p_info,abort_callback & p_abort) {
 		p_info.set_length( lengths[p_subsong] );
-		p_info.info_set_int( "samplerate", settings.samplerate );
-		p_info.info_set_int( "channels", settings.channels );
 		p_info.info_set_int( "bitspersample", 32 );
+		p_info.info_set_int(field_patterns, mod->get_num_patterns());
+		p_info.info_set_int(field_orders, mod->get_num_orders());
+		p_info.info_set_int(field_channels, mod->get_num_channels());
+		p_info.info_set_int(field_samples, mod->get_num_samples());
+		p_info.info_set_int(field_instruments, mod->get_num_instruments());
 		std::vector<std::string> keys = mod->get_metadata_keys();
 		for ( std::vector<std::string>::iterator key = keys.begin(); key != keys.end(); ++key ) {
 			if ( *key == "message_raw" ) {
@@ -226,6 +248,39 @@ public:
                 }
             }
 			p_info.meta_set( (*key).c_str(), mod->get_metadata( *key ).c_str() );
+		}
+		int i = 0;
+		std::vector<std::string> _names = mod->get_sample_names();
+		pfc::string8_fast temp;
+		for (std::vector<std::string>::iterator name = _names.begin(); name != _names.end(); ++name, ++i) {
+			if (name->empty()) continue;
+			temp = field_sample;
+			temp += pfc::format_int(i, 2, 10);
+			p_info.meta_set(temp, name->c_str());
+		}
+		i = 0;
+		_names = mod->get_instrument_names();
+		for (std::vector<std::string>::iterator name = _names.begin(); name != _names.end(); ++name, ++i) {
+			if (name->empty()) continue;
+			temp = field_instrument;
+			temp += pfc::format_int(i, 2, 10);
+			p_info.meta_set(temp, name->c_str());
+		}
+		i = 0;
+		_names = mod->get_channel_names();
+		for (std::vector<std::string>::iterator name = _names.begin(); name != _names.end(); ++name, ++i) {
+			if (name->empty()) continue;
+			temp = field_channel;
+			temp += pfc::format_int(i, 2, 10);
+			p_info.meta_set(temp, name->c_str());
+		}
+		i = 0;
+		_names = mod->get_pattern_names();
+		for (std::vector<std::string>::iterator name = _names.begin(); name != _names.end(); ++name, ++i) {
+			if (name->empty()) continue;
+			temp = field_pattern;
+			temp += pfc::format_int(i, 2, 10);
+			p_info.meta_set(temp, name->c_str());
 		}
 	}
 	t_filestats get_file_stats(abort_callback & p_abort) {
@@ -243,14 +298,19 @@ public:
         if (p_flags & input_flag_no_looping) {
             mod->set_repeat_count(0);
         }
+		dyn_order = -1; dyn_row = -1; dyn_speed = -1; dyn_tempo = -1;
+		dyn_channels = -1; dyn_max_channels = 0; dyn_pattern = -1;
+		dyn_meta_reported = false;
 	}
 	bool decode_run(audio_chunk & p_chunk,abort_callback & p_abort) {
+		last_count = 0;
 		if ( settings.channels == 1 ) {
 
 			std::size_t count = mod->read( settings.samplerate, buffersize, left.data() );
 			if ( count == 0 ) {
 				return false;
 			}
+			last_count = count;
 			for ( std::size_t frame = 0; frame < count; frame++ ) {
 				buffer[frame*1+0] = left[frame];
 			}
@@ -263,6 +323,7 @@ public:
 			if ( count == 0 ) {
 				return false;
 			}
+			last_count = count;
 			for ( std::size_t frame = 0; frame < count; frame++ ) {
 				buffer[frame*2+0] = left[frame];
 				buffer[frame*2+1] = right[frame];
@@ -276,6 +337,7 @@ public:
 			if ( count == 0 ) {
 				return false;
 			}
+			last_count = count;
 			for ( std::size_t frame = 0; frame < count; frame++ ) {
 				buffer[frame*4+0] = left[frame];
 				buffer[frame*4+1] = right[frame];
@@ -291,13 +353,61 @@ public:
 
 	}
 	void decode_seek(double p_seconds,abort_callback & p_abort) {
+		dyn_meta_reported = false;
+		last_count = 0;
 		mod->set_position_seconds( p_seconds );
 	}
 	bool decode_can_seek() {
 		return true;
 	}
-	bool decode_get_dynamic_info(file_info & p_out, double & p_timestamp_delta) { // deals with dynamic information such as VBR bitrates
-		return false;
+	bool decode_get_dynamic_info(file_info & p_out, double & p_timestamp_delta) {
+		bool ret = false;
+		if (!dyn_meta_reported) {
+			p_out.info_set_int("samplerate", settings.samplerate);
+			p_out.info_set_int("channels", settings.channels);
+			ret = true;
+		}
+		int temp = mod->get_current_order();
+		if (dyn_order != temp) {
+			dyn_order = temp;
+			p_out.info_set_int(field_dyn_order, dyn_order);
+			p_out.info_set_int(field_dyn_pattern, mod->get_current_pattern());
+			ret = true;
+		}
+		temp = mod->get_current_row();
+		if (dyn_row != temp) {
+			dyn_row = temp;
+			p_out.info_set_int(field_dyn_row, dyn_row);
+			ret = true;
+		}
+		temp = mod->get_current_speed();
+		if (dyn_speed != temp) {
+			dyn_speed = temp;
+			p_out.info_set_int(field_dyn_speed, dyn_speed);
+			ret = true;
+		}
+		temp = mod->get_current_tempo();
+		if (dyn_tempo != temp) {
+			dyn_tempo = temp;
+			p_out.info_set_int(field_dyn_tempo, dyn_tempo);
+			ret = true;
+		}
+		temp = mod->get_current_playing_channels();
+		if (temp != dyn_channels) {
+			dyn_channels = temp;
+			p_out.info_set_int(field_dyn_channels, dyn_channels);
+			ret = true;
+		}
+		if (temp > dyn_max_channels) {
+			dyn_max_channels = temp;
+			p_out.info_set_int(field_dyn_channels_max, dyn_max_channels);
+			ret = true;
+		}
+
+		if (ret) {
+			p_timestamp_delta = -((double)(last_count) / (double)(settings.samplerate));
+		}
+		return ret;
 	}
 	bool decode_get_dynamic_info_track(file_info & p_out, double & p_timestamp_delta) { // deals with dynamic information such as track changes in live streams
 		return false;
@@ -336,6 +446,10 @@ private:
 	std::vector<float> buffer;
     std::vector<double> lengths;
     std::vector<std::string> names;
+	bool dyn_meta_reported;
+	std::size_t last_count;
+	int dyn_order, dyn_row, dyn_speed, dyn_tempo, dyn_channels, dyn_max_channels;
+	int dyn_pattern;
     
 public:
 	input_openmpt() : mod(0), left(buffersize), right(buffersize), rear_left(buffersize), rear_right(buffersize), buffer(4*buffersize) {}
