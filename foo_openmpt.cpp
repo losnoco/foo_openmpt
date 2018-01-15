@@ -365,6 +365,7 @@ public:
 		if (!dyn_meta_reported) {
 			p_out.info_set_int("samplerate", settings.samplerate);
 			p_out.info_set_int("channels", settings.channels);
+			dyn_meta_reported = true;
 			ret = true;
 		}
 		int temp = mod->get_current_order();
