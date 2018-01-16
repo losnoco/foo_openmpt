@@ -1,5 +1,5 @@
 //#define BUILD_VERSION ""
-#define BUILD_VERSION "+2"
+#define BUILD_VERSION "+3"
 
 #if defined(_MSC_VER)
 #pragma warning(disable:4091)
@@ -920,7 +920,9 @@ class CVisWindow : public CWindowImpl<CVisWindow>, play_callback {
 	openmpt::module_ext * mod;
 	openmpt::ext::pattern_vis * pattern_vis;
 
-	HDC m_hDC;
+	SIZE m_hSize;
+	HDC m_hDC, m_hDCbackbuffer;
+	HBITMAP m_hBitbackbuffer;
 
 protected:
 	DWORD colors[3];
@@ -1045,6 +1047,8 @@ int CVisWindow::OnCreate(LPCREATESTRUCT)
 	SetWindowText(_T("Module Visualizer"));
 
 	m_hDC = GetDC();
+	m_hDCbackbuffer = CreateCompatibleDC(m_hDC);
+	m_hBitbackbuffer = 0;
 
 	VisOpen();
 
@@ -1069,6 +1073,13 @@ void CVisWindow::OnDestroy()
 
 	VisClose();
 
+	if (m_hBitbackbuffer) {
+		DeleteObject(m_hBitbackbuffer);
+		m_hBitbackbuffer = 0;
+	}
+
+	DeleteDC(m_hDCbackbuffer);
+
 	if (mod) {
 		current_mod.release(mod);
 		mod = 0;
@@ -1077,7 +1088,18 @@ void CVisWindow::OnDestroy()
 
 void CVisWindow::OnPaint(CDCHandle dc) {
 	Render();
-	ValidateRect(NULL);
+
+	PAINTSTRUCT ps;
+	HDC hdc = BeginPaint(&ps);
+
+	ps.rcPaint.right -= ps.rcPaint.left;
+	ps.rcPaint.bottom -= ps.rcPaint.top;
+
+	BitBlt(hdc, ps.rcPaint.left, ps.rcPaint.top,
+		ps.rcPaint.right, ps.rcPaint.bottom, m_hDCbackbuffer,
+		ps.rcPaint.left, ps.rcPaint.top, SRCCOPY);
+
+	EndPaint(&ps);
 }
 
 void CVisWindow::Render() {
@@ -1088,7 +1110,33 @@ void CVisWindow::Render() {
 	sz.cx = rc.right - rc.left;
 	sz.cy = rc.bottom - rc.top;
 
-	VisRenderDC(m_hDC, sz);
+	if (sz.cx != m_hSize.cx || sz.cy != m_hSize.cy || !m_hBitbackbuffer) {
+		if (m_hBitbackbuffer) {
+			DeleteObject(m_hBitbackbuffer);
+			m_hBitbackbuffer = 0;
+		}
+
+		m_hSize.cx = sz.cx;
+		m_hSize.cy = sz.cy;
+
+		BITMAPINFOHEADER bmih;
+		bmih.biSize = sizeof(bmih);
+		bmih.biWidth = sz.cx;
+		bmih.biHeight = sz.cy;
+		bmih.biPlanes = 1;
+		bmih.biBitCount = 32;
+		bmih.biCompression = BI_RGB;
+		bmih.biSizeImage = 0;
+		bmih.biXPelsPerMeter = 0;
+		bmih.biYPelsPerMeter = 0;
+		bmih.biClrUsed = 0;
+		bmih.biClrImportant = 0;
+
+		m_hBitbackbuffer = CreateDIBSection(0, (const BITMAPINFO *)&bmih, DIB_RGB_COLORS, 0, 0, 0);
+		SelectObject(m_hDCbackbuffer, m_hBitbackbuffer);
+	}
+
+	VisRenderDC(m_hDCbackbuffer, sz);
 }
 
 void CVisWindow::OnSize(UINT wParam, CSize size) {
