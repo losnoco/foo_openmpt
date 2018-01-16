@@ -1,0 +1,128 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_MOD_CONFIG DIALOGEX 0, 0, 286, 253
+STYLE DS_SETFONT | WS_CHILD
+FONT 8, "Tahoma", 0, 0, 0x0
+BEGIN
+    RTEXT           "Sample rate:",IDC_STATIC,20,14,44,8
+    COMBOBOX        IDC_SAMPLERATE,66,12,55,130,CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Hz",IDC_STATIC,122,14,10,8
+    RTEXT           "Channels:",IDC_STATIC,17,29,47,9
+    COMBOBOX        IDC_CHANNELS,66,27,55,58,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    RTEXT           "Interpolation:",IDC_STATIC,17,43,47,9
+    COMBOBOX        IDC_INTERPOLATION,66,42,55,58,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    RTEXT           "Loops:",IDC_STATIC,35,59,29,9
+    COMBOBOX        IDC_LOOPS,66,57,55,84,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    RTEXT           "Gain:",IDC_STATIC,143,14,26,8
+    CONTROL         "",IDC_GAIN,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,169,12,72,13
+    RTEXT           "0.00 dB",IDC_GAIN_TEXT,242,14,37,8
+    RTEXT           "Separation:",IDC_STATIC,128,29,41,8
+    CONTROL         "",IDC_STEREO,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,169,27,72,13
+    RTEXT           "100%",IDC_STEREO_TEXT,241,30,37,8
+    RTEXT           "Vol. ramping:",IDC_STATIC,125,43,44,9
+    CONTROL         "",IDC_RAMPING,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,169,42,72,13
+    RTEXT           "Default",IDC_RAMPING_TEXT,242,44,37,8
+    CONTROL         "Use Amiga Resampler for Amiga Modules",IDC_AMIGA,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,132,59,147,10
+    LTEXT           "Dynamic info fields: order, pattern, row, speed, tempo, channels, channels_max.\nIn scripts: %__mod_dyn_order%, %__mod_dyn_pattern%, etc.",IDC_STATIC,7,184,272,21
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_MOD_CONFIG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 279
+        VERTGUIDE, 64
+        VERTGUIDE, 66
+        VERTGUIDE, 121
+        VERTGUIDE, 169
+        VERTGUIDE, 241
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 246
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// AFX_DIALOG_LAYOUT
+//
+
+IDD_MOD_CONFIG AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

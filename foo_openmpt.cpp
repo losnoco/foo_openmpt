@@ -78,8 +78,7 @@ static const GUID guid_ui_element =
 { 0xe4836cc0, 0x17fb, 0x433c,{ 0xa1, 0x8f, 0x45, 0xd9, 0x54, 0x20, 0x1f, 0x92 } };
 
 
-enum
-{
+enum {
 	default_cfg_samplerate = 44100,
 	default_cfg_channels = 2,
 	default_cfg_gain = 0,
@@ -141,8 +140,7 @@ struct foo_openmpt_settings {
 	}
 };
 
-static void g_push_archive_extensions(std::vector<std::string> & list)
-{
+static void g_push_archive_extensions(std::vector<std::string> & list) {
     static std::string archive_extensions[] = {
         "mdz", "mdr", "s3z", "xmz", "itz", "mptmz"
     };
@@ -220,15 +218,13 @@ public:
 		m_file = p_filehint; // p_filehint may be null, hence next line
 		input_open_file_helper(m_file,p_path,p_reason,p_abort); // if m_file is null, opens file with appropriate privileges for our operation (read/write for writing tags, read-only otherwise).
 
-        try
-        {
+        try {
             service_ptr_t<file> m_unpack;
             unpacker::g_open( m_unpack, m_file, p_abort );
             
             m_file = m_unpack;
         }
-        catch ( const exception_io_data & )
-        {
+        catch ( const exception_io_data & ) {
             m_file->seek( 0, p_abort );
         }
 
@@ -497,18 +493,15 @@ public:
 			delete mod;
 	}
     
-    static GUID g_get_guid()
-    {
+    static GUID g_get_guid() {
         return { 0xe2ff4f22, 0xb217, 0x46e2, { 0xb2, 0xf4, 0xa8, 0xbd, 0x9f, 0x9a, 0x71, 0xe6 } };
     }
     
-    static const char * g_get_name()
-    {
+    static const char * g_get_name() {
         return "OpenMPT Module Decoder";
     }
 
-	static GUID g_get_preferences_guid()
-	{
+	static GUID g_get_preferences_guid() {
 		return { 0xb506c766, 0x7a78, 0x414f,{ 0x9e, 0xf2, 0x9, 0xcb, 0xa8, 0xf7, 0x81, 0x26 } };
 	}
 };
@@ -600,10 +593,8 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM) {
 
 	SetWindowLong(DWL_USER, 0);
 
-	for (n = tabsize(srate_tab); n--;)
-	{
-		if (srate_tab[n] != cfg_samplerate)
-		{
+	for (n = tabsize(srate_tab); n--;) {
+		if (srate_tab[n] != cfg_samplerate) {
 			_itoa(srate_tab[n], temp, 10);
 			cfg_history_samplerate.add_item(temp);
 		}
@@ -638,8 +629,7 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM) {
 	m_combo_loops = GetDlgItem(IDC_LOOPS);
 	uSendMessageText(m_combo_loops, CB_ADDSTRING, 0, "infinite");
 	uSendMessageText(m_combo_loops, CB_ADDSTRING, 0, "none");
-	for (n = 1; n <= 16; n++)
-	{
+	for (n = 1; n <= 16; n++) {
 		_itoa(n, temp, 10);
 		uSendMessageText(m_combo_loops, CB_ADDSTRING, 0, temp);
 	}
@@ -695,8 +685,7 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM) {
 	return FALSE;
 }
 
-void CMyPreferences::update_label_gain()
-{
+void CMyPreferences::update_label_gain() {
 	char temp[16];
 	int value = m_slider_gain.GetPos() - 1200;
 	bool negative = value < 0;
@@ -706,8 +695,7 @@ void CMyPreferences::update_label_gain()
 	uSetWindowText(m_text_gain, temp);
 }
 
-void CMyPreferences::update_label_stereo()
-{
+void CMyPreferences::update_label_stereo() {
 	char temp[16];
 	int value = m_slider_stereo.GetPos();
 	temp[15] = '\0';
@@ -715,8 +703,7 @@ void CMyPreferences::update_label_stereo()
 	uSetWindowText(m_text_stereo, temp);
 }
 
-void CMyPreferences::update_label_ramping()
-{
+void CMyPreferences::update_label_ramping() {
 	char temp[16];
 	int value = m_slider_ramping.GetPos() - 1;
 	temp[15] = '\0';
@@ -727,8 +714,7 @@ void CMyPreferences::update_label_ramping()
 }
 
 void CMyPreferences::OnEditChange(UINT, int, CWindow) {
-	if (GetWindowLong(DWL_USER))
-	{
+	if (GetWindowLong(DWL_USER)) {
 		OnChanged();
 	}
 }
@@ -1202,8 +1188,7 @@ void CVisWindow::VisClose() {
 	DeleteDC(visDC);
 }
 
-static int get_pattern_width(int chars_per_channel, int spaces_per_channel, int num_cols, int text_size, int channels)
-{
+static int get_pattern_width(int chars_per_channel, int spaces_per_channel, int num_cols, int text_size, int channels) {
 	int pattern_width = ((chars_per_channel * channels + 4) * text_size) + (spaces_per_channel * channels + channels - (num_cols == 1 ? 1 : 2)) * (text_size / 2);
 	return pattern_width;
 }
@@ -1426,8 +1411,7 @@ BOOL CVisWindow::VisRenderDC(HDC dc, SIZE size) {
 	return TRUE;
 }
 
-class CVisWindowElementConfig : public ui_element_config
-{
+class CVisWindowElementConfig : public ui_element_config {
 public:
 	struct data {
 	} the_data;
@@ -1442,8 +1426,7 @@ class CVisWindowElementInstance;
 critical_section g_VisWindows_sync;
 pfc::ptr_list_t<CVisWindowElementInstance> g_VisWindows;
 
-class CVisWindowElementInstance : public CVisWindow, public ui_element_instance
-{
+class CVisWindowElementInstance : public CVisWindow, public ui_element_instance {
 	ui_element_instance_callback_ptr m_callback;
 
 public:
@@ -1522,30 +1505,25 @@ public:
 		return false;
 	}
 
-	void Activate()
-	{
+	void Activate() {
 		m_callback->request_activation(this);
 	}
 };
 
-class CVisWindowElement : public ui_element_v2
-{
+class CVisWindowElement : public ui_element_v2 {
 	virtual GUID get_guid() { return guid_ui_element; }
 	virtual GUID get_subclass() { return ui_element_subclass_playback_visualisation; }
 	virtual void get_name(pfc::string_base & p_out) { p_out = "OpenMPT"; }
-	virtual ui_element_instance_ptr instantiate(HWND p_parent, ui_element_config::ptr cfg, ui_element_instance_callback_ptr p_callback)
-	{
+	virtual ui_element_instance_ptr instantiate(HWND p_parent, ui_element_config::ptr cfg, ui_element_instance_callback_ptr p_callback) {
 		return new window_service_impl_t<CVisWindowElementInstance>(p_parent, cfg, p_callback);
 	}
 	virtual ui_element_config::ptr get_default_configuration() { return new service_impl_t<CVisWindowElementConfig>; }
 	virtual ui_element_children_enumerator_ptr enumerate_children(ui_element_config::ptr cfg) { return NULL; }
 	virtual bool get_description(pfc::string_base & p_out) { p_out = "Displays the current pattern in the module which is currently playing."; return true; }
 	virtual t_uint32 get_flags() { return KFlagSupportsBump | KFlagHavePopupCommand; }
-	virtual bool bump()
-	{
+	virtual bool bump() {
 		insync(g_VisWindows_sync);
-		if (g_VisWindows.get_count())
-		{
+		if (g_VisWindows.get_count()) {
 			for (unsigned i = 0, j = g_VisWindows.get_count(); i < j; i++)
 				g_VisWindows[i]->Activate();
 			return true;
