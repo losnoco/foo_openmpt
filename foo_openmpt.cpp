@@ -1668,12 +1668,14 @@ class monitor_dialog {
 			char temp[8] = { 0 };
 
 			if (wndctrl == wnd_slider_pitch) {
+				insync(dlg_lock);
 				dlg_pitch = SendMessage(wndctrl, TBM_GETPOS, 0, 0);
 				dlg_changed_controls = true;
 				snprintf(temp, 7, "%d%%", dlg_pitch);
 				uSetDlgItemText(wnd, IDC_PITCH_TEXT, temp);
 			}
 			else if (wndctrl == wnd_slider_tempo) {
+				insync(dlg_lock);
 				dlg_tempo = SendMessage(wndctrl, TBM_GETPOS, 0, 0);
 				dlg_changed_controls = true;
 				snprintf(temp, 7, "%d%%", dlg_tempo);
@@ -1710,7 +1712,8 @@ class monitor_dialog {
 				dlg_pitch = 100;
 				dlg_tempo = 100;
 
-				if (dlg_changed_controls) {
+				if (dlg_changed_controls)
+				{
 					update();
 				}
 			}
@@ -1767,8 +1770,9 @@ class monitor_dialog {
 public:
 	monitor_dialog(HWND parent) {
 		wnd = 0;
-		if (!CreateDialogParam(core_api::get_my_instance(), MAKEINTRESOURCE(IDD_MONITOR), parent, g_dialog_proc, reinterpret_cast<LPARAM> (this)))
+		if (!CreateDialogParam(core_api::get_my_instance(), MAKEINTRESOURCE(IDD_MONITOR), parent, g_dialog_proc, reinterpret_cast<LPARAM> (this))) {
 			throw exception_win32(GetLastError());
+		}
 	}
 
 	~monitor_dialog() {
