@@ -1712,8 +1712,7 @@ class monitor_dialog {
 				dlg_pitch = 100;
 				dlg_tempo = 100;
 
-				if (dlg_changed_controls)
-				{
+				if (dlg_changed_controls) {
 					update();
 				}
 			}
