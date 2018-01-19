@@ -1645,19 +1645,16 @@ class monitor_dialog {
 		}
 		return 1;
 
-		case WM_TIMER:
-		{
+		case WM_TIMER: {
 			insync(dlg_lock);
-			if (dlg_changed_info)
-			{
+			if (dlg_changed_info) {
 				dlg_changed_info = false;
 				update();
 			}
 		}
 		break;
 
-		case WM_DESTROY:
-		{
+		case WM_DESTROY: {
 			cfg_dlg_placement.on_window_destruction(wnd);
 			KillTimer(wnd, 0);
 			uSetWindowLong(wnd, DWL_USER, 0);
@@ -1686,20 +1683,17 @@ class monitor_dialog {
 		}
 
 		case WM_COMMAND:
-			if (wp == IDCANCEL)
-			{
+			if (wp == IDCANCEL) {
 				DestroyWindow(wnd);
 			}
-			else if (wp == IDC_OVERRIDE)
-			{
+			else if (wp == IDC_OVERRIDE) {
 				insync(dlg_lock);
 
 				cfg_control_override = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0);
 
 				BOOL enable = !!dlg_module && cfg_control_override;
 
-				for (unsigned i = 0, j = 64; i < j; ++i)
-				{
+				for (unsigned i = 0, j = 64; i < j; ++i) {
 					EnableWindow(GetDlgItem(wnd, IDC_VOICE1 + i), enable);
 				}
 
@@ -1708,8 +1702,7 @@ class monitor_dialog {
 
 				dlg_changed_controls = true;
 			}
-			else if (wp == IDC_RESET)
-			{
+			else if (wp == IDC_RESET) {
 				insync(dlg_lock);
 
 				dlg_changed_controls = dlg_mute_mask != 0 || dlg_pitch != 100 || dlg_tempo != 100;
@@ -1717,13 +1710,11 @@ class monitor_dialog {
 				dlg_pitch = 100;
 				dlg_tempo = 100;
 
-				if (dlg_changed_controls)
-				{
+				if (dlg_changed_controls) {
 					update();
 				}
 			}
-			else if (wp - IDC_VOICE1 < 64)
-			{
+			else if (wp - IDC_VOICE1 < 64) {
 				unsigned voice = wp - IDC_VOICE1;
 				t_uint64 mask = ~(1 << voice);
 				t_uint64 bit = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0) ? 0 : (1 << voice);
@@ -1739,11 +1730,9 @@ class monitor_dialog {
 		return 0;
 	}
 
-	void update()
-	{
+	void update() {
 		pfc::string8 title;
-		if (dlg_path.length())
-		{
+		if (dlg_path.length()) {
 			title = pfc::string_filename_ext(dlg_path);
 			title += " - ";
 		}
@@ -1753,8 +1742,7 @@ class monitor_dialog {
 		BOOL enable = !!dlg_module && cfg_control_override;
 
 		HWND w;
-		for (unsigned i = 0; i < 64; ++i)
-		{
+		for (unsigned i = 0; i < 64; ++i) {
 			w = GetDlgItem(wnd, IDC_VOICE1 + i);
 			uSendMessage(w, BM_SETCHECK, !((dlg_mute_mask >> i) & 1), 0);
 			EnableWindow(w, enable);
@@ -1777,69 +1765,55 @@ class monitor_dialog {
 	}
 
 public:
-	monitor_dialog(HWND parent)
-	{
+	monitor_dialog(HWND parent) {
 		wnd = 0;
 		if (!CreateDialogParam(core_api::get_my_instance(), MAKEINTRESOURCE(IDD_MONITOR), parent, g_dialog_proc, reinterpret_cast<LPARAM> (this)))
 			throw exception_win32(GetLastError());
 	}
 
-	~monitor_dialog()
-	{
+	~monitor_dialog() {
 		DestroyWindow(wnd);
 	}
 };
 
-class monitor_menu : public mainmenu_commands
-{
-	virtual t_uint32 get_command_count()
-	{
+class monitor_menu : public mainmenu_commands {
+	virtual t_uint32 get_command_count() {
 		return 1;
 	}
 
-	virtual GUID get_command(t_uint32 p_index)
-	{
+	virtual GUID get_command(t_uint32 p_index) {
 		// {5766C0F0-1933-4E21-BE3A-0842258C9CE2}
 		static const GUID guid =
 		{ 0x5766c0f0, 0x1933, 0x4e21,{ 0xbe, 0x3a, 0x8, 0x42, 0x25, 0x8c, 0x9c, 0xe2 } };
 		return guid;
 	}
 
-	virtual void get_name(t_uint32 p_index, pfc::string_base & p_out)
-	{
+	virtual void get_name(t_uint32 p_index, pfc::string_base & p_out) {
 		p_out = "OpenMPT control";
 	}
 
-	virtual bool get_description(t_uint32 p_index, pfc::string_base & p_out)
-	{
+	virtual bool get_description(t_uint32 p_index, pfc::string_base & p_out) {
 		p_out = "Activates the OpenMPT advanced controls window.";
 		return true;
 	}
 
-	virtual GUID get_parent()
-	{
+	virtual GUID get_parent() {
 		return mainmenu_groups::view;
 	}
 
-	virtual bool get_display(t_uint32 p_index, pfc::string_base & p_text, t_uint32 & p_flags)
-	{
+	virtual bool get_display(t_uint32 p_index, pfc::string_base & p_text, t_uint32 & p_flags) {
 		p_flags = 0;
 		get_name(p_index, p_text);
 		return true;
 	}
 
-	virtual void execute(t_uint32 p_index, service_ptr_t<service_base> p_callback)
-	{
-		if (p_index == 0 && core_api::assert_main_thread())
-		{
-			if (!dialog)
-			{
-				try
-				{
+	virtual void execute(t_uint32 p_index, service_ptr_t<service_base> p_callback) {
+		if (p_index == 0 && core_api::assert_main_thread()) {
+			if (!dialog) {
+				try {
 					dialog = new monitor_dialog(core_api::get_main_window());
 				}
-				catch (const std::exception & e)
-				{
+				catch (const std::exception & e) {
 					dialog = 0;
 					console::error(e.what());
 				}
