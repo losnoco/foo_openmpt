@@ -1,5 +1,5 @@
 //#define BUILD_VERSION ""
-#define BUILD_VERSION "+3"
+#define BUILD_VERSION "+6"
 
 #if defined(_MSC_VER)
 #pragma warning(disable:4091)
@@ -7,6 +7,7 @@
 
 #include <foobar2000.h>
 #include "../helpers/dropdown_helper.h"
+#include "../helpers/window_placement_helper.h"
 #include "../ATLHelpers/ATLHelpersLean.h"
 #include "../ATLHelpers/misc.h"
 
@@ -23,17 +24,7 @@
 #include <vector>
 #include <sstream>
 #include <iomanip>
-
-
-// Declaration of your component's version information
-// Since foobar2000 v1.0 having at least one of these in your DLL is mandatory to let the troubleshooter tell different versions of your component apart.
-// Note that it is possible to declare multiple components within one DLL, but it's strongly recommended to keep only one declaration per DLL.
-// As for 1.1, the version numbers are used by the component update finder to find updates; for that to work, you must have ONLY ONE declaration per DLL. If there are multiple declarations, the component is assumed to be outdated and a version number of "0" is assumed, to overwrite the component with whatever is currently on the site assuming that it comes with proper version numbers.
-DECLARE_COMPONENT_VERSION("OpenMPT component", OPENMPT_API_VERSION_STRING BUILD_VERSION ,"libopenmpt based module file player");
-
-// This will prevent users from renaming your component around (important for proper troubleshooter behaviors) or loading multiple instances of it.
-VALIDATE_COMPONENT_FILENAME("foo_openmpt.dll");
-
+#include <memory>
 
 // settings
 
@@ -77,6 +68,38 @@ static const GUID guid_cfg_history_samplerate =
 static const GUID guid_ui_element =
 { 0xe4836cc0, 0x17fb, 0x433c,{ 0xa1, 0x8f, 0x45, 0xd9, 0x54, 0x20, 0x1f, 0x92 } };
 
+static critical_section vis_lock;
+static critical_section dlg_lock;
+
+class monitor_dialog *     dialog = 0;
+
+typedef std::shared_ptr<openmpt::module_ext> openmpt_handle;
+
+static openmpt_handle current_mod;
+static std::string current_mod_path;
+static t_uint32 current_mod_subsong;
+
+static openmpt_handle dlg_module;
+static openmpt::ext::interactive * dlg_interactive = 0;
+
+bool                       dlg_changed_info = false;
+pfc::string8               dlg_path;
+t_uint64                   dlg_channels_allowed = 0;
+
+bool                       dlg_changed_controls = false;
+t_uint64                   dlg_mute_mask = 0;
+int                        dlg_pitch = 100;
+int                        dlg_tempo = 100;
+
+static const GUID guid_cfg_dlg_placement = { 0xbe06c7e5, 0x911b, 0x4341,{ 0xbb, 0x44, 0x8, 0x8, 0x7a, 0x6f, 0x41, 0xb7 } };
+static cfg_window_placement cfg_dlg_placement(guid_cfg_dlg_placement);
+
+static const GUID guid_cfg_control_override = { 0x22da836e, 0xc5e, 0x4741,{ 0x93, 0x71, 0x14, 0x24, 0x6f, 0xf9, 0xf6, 0xca } };
+static cfg_int cfg_control_override(guid_cfg_control_override, 0);
+
+static void monitor_start(openmpt_handle & mod, const char * p_path, bool playback);
+static void monitor_update(openmpt_handle & mod);
+static void monitor_stop(const openmpt_handle & mod);
 
 enum {
 	default_cfg_samplerate = 44100,
@@ -169,45 +192,6 @@ static const char field_dyn_tempo[] = "mod_dyn_tempo";
 static const char field_dyn_channels[] = "mod_dyn_channels";
 static const char field_dyn_channels_max[] = "mod_dyn_channels_max";
 
-class openmpt_handle {
-	int refcount;
-	openmpt::module_ext * mod;
-
-public:
-	openmpt_handle() : mod(0), refcount(0) { }
-	~openmpt_handle() {
-		delete mod;
-	}
-
-	openmpt::module_ext * operator * () { return mod; }
-
-	void assign(openmpt::module_ext * _mod) {
-		if (_mod == mod)
-			++refcount;
-		else {
-			if (refcount == 1)
-				delete mod;
-			mod = _mod;
-			refcount = 1;
-		}
-	}
-	bool release(openmpt::module_ext * _mod) {
-		if (_mod == mod) {
-			if (--refcount == 0) {
-				delete mod;
-				mod = 0;
-			}
-			return true;
-		}
-		return false;
-	}
-};
-
-static critical_section vis_lock;
-static openmpt_handle current_mod;
-static std::string current_mod_path;
-static t_uint32 current_mod_subsong;
-
 class input_openmpt : public input_stubs {
 public:
 	void open(service_ptr_t<file> p_filehint,const char * p_path,t_input_open_reason p_reason,abort_callback & p_abort) {
@@ -236,7 +220,7 @@ public:
 		try {
 			std::map< std::string, std::string > ctls;
 			ctls["seek.sync_samples"] = "1";
-			mod = new openmpt::module_ext( data, std::clog, ctls );
+			mod = std::make_shared<openmpt::module_ext>( data, std::clog, ctls );
             for (unsigned i = 0, j = mod->get_num_subsongs(); i < j; ++i) {
                 mod->select_subsong(i);
                 lengths.push_back(mod->get_duration_seconds());
@@ -329,12 +313,15 @@ public:
 		dyn_meta_reported = false;
 		if (p_flags & input_flag_playback) {
 			insync(vis_lock);
-			current_mod.assign(mod);
+			current_mod = mod;
 			current_mod_path = m_path;
 			current_mod_subsong = p_subsong;
 		}
+
+		monitor_start(mod, m_path.c_str(), !!(p_flags & input_flag_playback));
 	}
 	bool decode_run(audio_chunk & p_chunk,abort_callback & p_abort) {
+		monitor_update(mod);
 		last_count = 0;
 		if ( settings.channels == 1 ) {
 
@@ -471,7 +458,7 @@ private:
 	service_ptr_t<file> m_file;
 	static const std::size_t buffersize = 1024;
 	foo_openmpt_settings settings;
-	openmpt::module_ext * mod;
+	openmpt_handle mod;
 	std::vector<float> left;
 	std::vector<float> right;
 	std::vector<float> rear_left;
@@ -486,19 +473,15 @@ private:
 	std::string m_path;
     
 public:
-	input_openmpt() : mod(0), left(buffersize), right(buffersize), rear_left(buffersize), rear_right(buffersize), buffer(4*buffersize) {}
-	~input_openmpt() {
-		insync(vis_lock);
-		if (!current_mod.release(mod))
-			delete mod;
-	}
+	input_openmpt() : left(buffersize), right(buffersize), rear_left(buffersize), rear_right(buffersize), buffer(4*buffersize) {}
+	~input_openmpt() { monitor_stop(mod); }
     
     static GUID g_get_guid() {
-        return { 0xe2ff4f22, 0xb217, 0x46e2, { 0xb2, 0xf4, 0xa8, 0xbd, 0x9f, 0x9a, 0x71, 0xe6 } };
+        return { 0x894b056d, 0x989d, 0x46f6,{ 0x99, 0x78, 0x4d, 0xe2, 0x9f, 0x68, 0x3, 0x9f } };
     }
     
     static const char * g_get_name() {
-        return "OpenMPT Module Decoder";
+        return "OpenMPT Module Decoder (kode54 fork)";
     }
 
 	static GUID g_get_preferences_guid() {
@@ -903,7 +886,7 @@ class CVisWindow : public CWindowImpl<CVisWindow>, play_callback {
 
 	bool running;
 
-	openmpt::module_ext * mod;
+	openmpt_handle mod;
 	openmpt::ext::pattern_vis * pattern_vis;
 
 	SIZE m_hSize;
@@ -921,9 +904,8 @@ public:
 
 		{
 			insync(vis_lock);
-			mod = *current_mod;
+			mod = current_mod;
 			if (mod) {
-				current_mod.assign(mod);
 				pattern_vis = static_cast<openmpt::ext::pattern_vis *>(mod->get_interface(openmpt::ext::pattern_vis_id));
 				running = true;
 				last_pattern = -1;
@@ -971,19 +953,15 @@ void CVisWindow::on_playback_new_track(metadb_handle_ptr p_track) {
 		insync(vis_lock);
 		path = p_track->get_path();
 		subsong = p_track->get_subsong_index();
-		if (*current_mod && path == current_mod_path && subsong == current_mod_subsong) {
-			if (mod)
-				delete mod;
-			mod = *current_mod;
-			if (mod) {
-				current_mod.assign(mod);
-				pattern_vis = static_cast<openmpt::ext::pattern_vis *>(mod->get_interface(openmpt::ext::pattern_vis_id));
-			}
+		if (current_mod && path == current_mod_path && subsong == current_mod_subsong) {
+			mod = current_mod;
+			pattern_vis = static_cast<openmpt::ext::pattern_vis *>(mod->get_interface(openmpt::ext::pattern_vis_id));
 			running = true;
 			last_pattern = -1;
 			return;
 		}
 	}
+	current_pattern = -1;
 	running = false;
 	last_pattern = -1;
 	Invalidate();
@@ -991,8 +969,7 @@ void CVisWindow::on_playback_new_track(metadb_handle_ptr p_track) {
 
 void CVisWindow::on_playback_stop(play_control::t_stop_reason) {
 	insync(vis_lock);
-	current_mod.release(mod);
-	mod = 0;
+	current_pattern = -1;
 	pattern_vis = 0;
 	running = false;
 	last_pattern = -1;
@@ -1065,11 +1042,6 @@ void CVisWindow::OnDestroy()
 	}
 
 	DeleteDC(m_hDCbackbuffer);
-
-	if (mod) {
-		current_mod.release(mod);
-		mod = 0;
-	}
 }
 
 void CVisWindow::OnPaint(CDCHandle dc) {
@@ -1532,7 +1504,356 @@ class CVisWindowElement : public ui_element_v2 {
 	}
 };
 
+static void initialize_channels() {
+	dlg_channels_allowed = 0;
+
+	if (dlg_module) {
+		int n_channels = dlg_module->get_num_channels();
+		for (int order = 0, n_orders = dlg_module->get_num_orders(); order < n_orders; ++order) {
+			int pattern = dlg_module->get_order_pattern(order);
+			if (pattern < dlg_module->get_num_patterns()) {
+				for (int row = 0, n_rows = dlg_module->get_pattern_num_rows(pattern); row < n_rows; ++row) {
+					for (int channel = 0; channel < n_channels; ++channel) {
+						int note = dlg_module->get_pattern_row_channel_command(pattern, row, channel, openmpt::module::command_note);
+						if (note) {
+							dlg_channels_allowed |= t_uint64(1) << channel;
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+static void mute_channels(openmpt_handle & mod, openmpt::ext::interactive *interactive, t_uint64 mask) {
+	if (interactive) {
+		for (int channel = 0, n_channels = mod->get_num_channels(); channel < n_channels; ++channel) {
+			t_uint64 current_mask = t_uint64(1) << channel;
+			bool muted = !!(mask & current_mask);
+			interactive->set_channel_mute_status(channel, muted);
+		}
+	}
+}
+
+static void adjust_speed(openmpt::ext::interactive *interactive, int pitch, int tempo) {
+	if (interactive) {
+		interactive->set_pitch_factor(double(pitch) * 0.01);
+		interactive->set_tempo_factor(double(tempo) * 0.01);
+	}
+}
+
+void monitor_start(openmpt_handle & mod, const char * p_path, bool playback) {
+	insync(dlg_lock);
+
+	openmpt::ext::interactive *interactive = static_cast<openmpt::ext::interactive *>(mod->get_interface(openmpt::ext::interactive_id));
+
+	if (playback) {
+		dlg_changed_info = true;
+
+		dlg_module = mod;
+		dlg_interactive = interactive;
+		dlg_path = p_path;
+
+		initialize_channels();
+	}
+
+	if (cfg_control_override) {
+		mute_channels(mod, interactive, dlg_mute_mask);
+		adjust_speed(interactive, dlg_pitch, dlg_tempo);
+	}
+}
+
+void monitor_update(openmpt_handle & mod)
+{
+	insync(dlg_lock);
+
+	if (mod == dlg_module) {
+		if (dlg_changed_controls) {
+			dlg_changed_controls = false;
+
+			bool enabled = !!cfg_control_override;
+			t_uint64 mask = enabled ? dlg_mute_mask : 0;
+			int pitch = enabled ? dlg_pitch : 100;
+			int tempo = enabled ? dlg_tempo : 100;
+
+			mute_channels(dlg_module, dlg_interactive, mask);
+			adjust_speed(dlg_interactive, pitch, tempo);
+		}
+	}
+}
+
+void monitor_stop(const openmpt_handle & mod)
+{
+	insync(dlg_lock);
+
+	if (mod == dlg_module) {
+		dlg_module.reset();
+		dlg_interactive = 0;
+
+		dlg_changed_info = true;
+		dlg_path = "";
+
+		dlg_channels_allowed = 0;
+	}
+}
+
+class monitor_dialog {
+	HWND wnd;
+	HWND wnd_slider_pitch;
+	HWND wnd_slider_tempo;
+
+	static BOOL CALLBACK g_dialog_proc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
+		monitor_dialog * ptr;
+
+		if (msg == WM_INITDIALOG) {
+			ptr = reinterpret_cast<monitor_dialog *> (lp);
+			uSetWindowLong(wnd, DWL_USER, lp);
+		}
+		else {
+			ptr = reinterpret_cast<monitor_dialog *> (uGetWindowLong(wnd, DWL_USER));
+		}
+
+		if (ptr) return ptr->dialog_proc(wnd, msg, wp, lp);
+		else return 0;
+	}
+
+	BOOL dialog_proc(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
+		switch (msg) {
+		case WM_INITDIALOG: {
+			this->wnd = wnd;
+
+			uSendDlgItemMessage(wnd, IDC_OVERRIDE, BM_SETCHECK, cfg_control_override, 0);
+
+			HWND w = wnd_slider_pitch = GetDlgItem(wnd, IDC_PITCH);
+			SendMessage(w, TBM_SETRANGEMIN, FALSE, 1);
+			SendMessage(w, TBM_SETRANGEMAX, FALSE, 400);
+
+			w = wnd_slider_tempo = GetDlgItem(wnd, IDC_TEMPO);
+			SendMessage(w, TBM_SETRANGEMIN, FALSE, 1);
+			SendMessage(w, TBM_SETRANGEMAX, FALSE, 400);
+
+			{
+				insync(dlg_lock);
+				dlg_changed_info = false;
+				dlg_changed_controls = false;
+				update();
+			}
+
+			SetTimer(wnd, 0, 100, 0);
+
+			cfg_dlg_placement.on_window_creation(wnd);
+		}
+		return 1;
+
+		case WM_TIMER:
+		{
+			insync(dlg_lock);
+			if (dlg_changed_info)
+			{
+				dlg_changed_info = false;
+				update();
+			}
+		}
+		break;
+
+		case WM_DESTROY:
+		{
+			cfg_dlg_placement.on_window_destruction(wnd);
+			KillTimer(wnd, 0);
+			uSetWindowLong(wnd, DWL_USER, 0);
+			delete this;
+			dialog = 0;
+		}
+		break;
+
+		case WM_HSCROLL: {
+			HWND wndctrl = (HWND)lp;
+			char temp[8] = { 0 };
+
+			if (wndctrl == wnd_slider_pitch) {
+				dlg_pitch = SendMessage(wndctrl, TBM_GETPOS, 0, 0);
+				dlg_changed_controls = true;
+				snprintf(temp, 7, "%d%%", dlg_pitch);
+				uSetDlgItemText(wnd, IDC_PITCH_TEXT, temp);
+			}
+			else if (wndctrl == wnd_slider_tempo) {
+				dlg_tempo = SendMessage(wndctrl, TBM_GETPOS, 0, 0);
+				dlg_changed_controls = true;
+				snprintf(temp, 7, "%d%%", dlg_tempo);
+				uSetDlgItemText(wnd, IDC_TEMPO_TEXT, temp);
+			}
+			break;
+		}
+
+		case WM_COMMAND:
+			if (wp == IDCANCEL)
+			{
+				DestroyWindow(wnd);
+			}
+			else if (wp == IDC_OVERRIDE)
+			{
+				insync(dlg_lock);
+
+				cfg_control_override = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0);
+
+				BOOL enable = !!dlg_module && cfg_control_override;
+
+				for (unsigned i = 0, j = 64; i < j; ++i)
+				{
+					EnableWindow(GetDlgItem(wnd, IDC_VOICE1 + i), enable);
+				}
+
+				EnableWindow(wnd_slider_pitch, enable);
+				EnableWindow(wnd_slider_tempo, enable);
+
+				dlg_changed_controls = true;
+			}
+			else if (wp == IDC_RESET)
+			{
+				insync(dlg_lock);
+
+				dlg_changed_controls = dlg_mute_mask != 0 || dlg_pitch != 100 || dlg_tempo != 100;
+				dlg_mute_mask = 0;
+				dlg_pitch = 100;
+				dlg_tempo = 100;
+
+				if (dlg_changed_controls)
+				{
+					update();
+				}
+			}
+			else if (wp - IDC_VOICE1 < 64)
+			{
+				unsigned voice = wp - IDC_VOICE1;
+				t_uint64 mask = ~(1 << voice);
+				t_uint64 bit = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0) ? 0 : (1 << voice);
+
+				insync(dlg_lock);
+
+				dlg_changed_controls = true;
+				dlg_mute_mask = (dlg_mute_mask & mask) | bit;
+			}
+			break;
+		}
+
+		return 0;
+	}
+
+	void update()
+	{
+		pfc::string8 title;
+		if (dlg_path.length())
+		{
+			title = pfc::string_filename_ext(dlg_path);
+			title += " - ";
+		}
+		title += "OpenMPT";
+		uSetWindowText(wnd, title);
+
+		BOOL enable = !!dlg_module && cfg_control_override;
+
+		HWND w;
+		for (unsigned i = 0; i < 64; ++i)
+		{
+			w = GetDlgItem(wnd, IDC_VOICE1 + i);
+			uSendMessage(w, BM_SETCHECK, !((dlg_mute_mask >> i) & 1), 0);
+			EnableWindow(w, enable);
+			ShowWindow(w, ((t_uint64(1) << i) & dlg_channels_allowed) ? SW_SHOWNA : SW_HIDE);
+		}
+
+		EnableWindow(wnd_slider_pitch, enable);
+		EnableWindow(wnd_slider_tempo, enable);
+
+		SendMessage(wnd_slider_pitch, TBM_SETPOS, TRUE, dlg_pitch);
+		SendMessage(wnd_slider_tempo, TBM_SETPOS, TRUE, dlg_tempo);
+
+		char temp[8];
+
+		snprintf(temp, 7, "%d%%", dlg_pitch);
+		uSetDlgItemText(wnd, IDC_PITCH_TEXT, temp);
+
+		snprintf(temp, 7, "%d%%", dlg_tempo);
+		uSetDlgItemText(wnd, IDC_TEMPO_TEXT, temp);
+	}
+
+public:
+	monitor_dialog(HWND parent)
+	{
+		wnd = 0;
+		if (!CreateDialogParam(core_api::get_my_instance(), MAKEINTRESOURCE(IDD_MONITOR), parent, g_dialog_proc, reinterpret_cast<LPARAM> (this)))
+			throw exception_win32(GetLastError());
+	}
+
+	~monitor_dialog()
+	{
+		DestroyWindow(wnd);
+	}
+};
+
+class monitor_menu : public mainmenu_commands
+{
+	virtual t_uint32 get_command_count()
+	{
+		return 1;
+	}
+
+	virtual GUID get_command(t_uint32 p_index)
+	{
+		// {5766C0F0-1933-4E21-BE3A-0842258C9CE2}
+		static const GUID guid =
+		{ 0x5766c0f0, 0x1933, 0x4e21,{ 0xbe, 0x3a, 0x8, 0x42, 0x25, 0x8c, 0x9c, 0xe2 } };
+		return guid;
+	}
+
+	virtual void get_name(t_uint32 p_index, pfc::string_base & p_out)
+	{
+		p_out = "OpenMPT control";
+	}
+
+	virtual bool get_description(t_uint32 p_index, pfc::string_base & p_out)
+	{
+		p_out = "Activates the OpenMPT advanced controls window.";
+		return true;
+	}
+
+	virtual GUID get_parent()
+	{
+		return mainmenu_groups::view;
+	}
+
+	virtual bool get_display(t_uint32 p_index, pfc::string_base & p_text, t_uint32 & p_flags)
+	{
+		p_flags = 0;
+		get_name(p_index, p_text);
+		return true;
+	}
+
+	virtual void execute(t_uint32 p_index, service_ptr_t<service_base> p_callback)
+	{
+		if (p_index == 0 && core_api::assert_main_thread())
+		{
+			if (!dialog)
+			{
+				try
+				{
+					dialog = new monitor_dialog(core_api::get_main_window());
+				}
+				catch (const std::exception & e)
+				{
+					dialog = 0;
+					console::error(e.what());
+				}
+			}
+		}
+	}
+};
+
 static input_factory_t<input_openmpt> g_input_openmpt_factory;
 static preferences_page_factory_t<preferences_page_myimpl> g_config_openmpt_factory;
 static service_factory_single_t<input_file_type_v2_impl_openmpt> g_filetypes;
 static service_factory_single_t<CVisWindowElement> g_element_openmpt_vis_factory;
+static mainmenu_commands_factory_t<monitor_menu> g_mainmenu_commands_monitor_factory;
+
+DECLARE_COMPONENT_VERSION("OpenMPT component (kode54 fork)", OPENMPT_API_VERSION_STRING BUILD_VERSION, "libopenmpt based module file player\n\nForked by kode54.");
+
+VALIDATE_COMPONENT_FILENAME("foo_openmpt54.dll");
