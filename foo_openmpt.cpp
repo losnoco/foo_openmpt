@@ -1,5 +1,44 @@
-//#define BUILD_VERSION ""
-#define BUILD_VERSION "+6"
+#define BUILD_VERSION ""
+//#define BUILD_VERSION "+1"
+
+/*
+	change log
+
+2018-01-29 02:11 UTC - kode54
+- Switched libopenmpt from unstable SVN snapshot to stable release, for
+  everyone's benefit
+- Implemented font deriving from UI element default font, still hard
+  coded to use Lucida Console. Expect a better font solution in the future.
+  This also should make the dialog DPI aware.
+- Version is now 0.3.5 - force deprecating 0.4.0-pre.*
+
+2018-01-19 04:08 UTC - kode54
+- Implemented std::shared_ptr instead of stupid reference counted crap
+  for openmpt handles, better accounting for shared pointer use everywhere
+- Implemented OpenMPT control dialog, based on foo_dumb's control dialog,
+  only this time it also has tempo and pitch controls
+- Version is now 0.4.0-pre.3+6
+
+2018-01-16 23:36 UTC - kode54
+- Implemented double buffering for flicker-free pattern visualization
+- Version is now 0.4.0-pre.3+3
+
+2018-01-16 23:35 UTC - kode54
+- Implemented conventional preferences dialog
+- Implemented first version of visualization, based on the OpenMPT
+  team's visualizer from xmp-openmpt
+- Version is now 0.4.0-pre.3+2
+
+2018-01-15 21:07 UTC - kode54
+- Implemented dynamic track information reporting
+- Implemented numbered sample, instrument, etc info reporting
+- Version is now 0.4.0-pre.3+1
+
+2018-01-25 02:28 UTC - kode54
+- Initial release
+- Version is now 0.4.0-pre.3
+
+*/
 
 #if defined(_MSC_VER)
 #pragma warning(disable:4091)
@@ -894,6 +933,7 @@ class CVisWindow : public CWindowImpl<CVisWindow>, play_callback {
 	HBITMAP m_hBitbackbuffer;
 
 protected:
+	HFONT deffont;
 	DWORD colors[3];
 
 public:
@@ -1042,6 +1082,7 @@ void CVisWindow::OnDestroy()
 	}
 
 	DeleteDC(m_hDCbackbuffer);
+	DeleteObject(deffont);
 }
 
 void CVisWindow::OnPaint(CDCHandle dc) {
@@ -1180,7 +1221,7 @@ BOOL CVisWindow::VisRenderDC(HDC dc, SIZE size) {
 	if (!visfont) {
 		// Force usage of a nice monospace font
 		LOGFONT logfont;
-		GetObject(GetCurrentObject(dc, OBJ_FONT), sizeof(logfont), &logfont);
+		GetObject(deffont, sizeof(logfont), &logfont);
 		wcscpy(logfont.lfFaceName, L"Lucida Console");
 		visfont = CreateFontIndirect(&logfont);
 	}
@@ -1419,6 +1460,8 @@ public:
 			color = GetSysColor(ui_color_to_sys_color_index(ui_color_text));
 		}
 		colors[2] = color;
+
+		deffont = m_callback->query_font_ex(ui_font_default);
 
 		Create(hwndParent, 0, 0, 0, 0, 0U, 0);
 
