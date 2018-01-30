@@ -1,8 +1,12 @@
-#define BUILD_VERSION ""
-//#define BUILD_VERSION "+1"
+//#define BUILD_VERSION ""
+#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2018-01-29 23:29 UTC - kode54
+- Updated file info reading to not return empty strings
+- Version is now 0.3.5+1
 
 2018-01-29 02:11 UTC - kode54
 - Switched libopenmpt from unstable SVN snapshot to stable release, for
@@ -289,14 +293,17 @@ public:
 			if ( *key == "message_raw" ) {
 				continue;
 			}
+			std::string value = mod->get_metadata( *key );
             if ( *key == "title" ) {
-                if ( names.size() > p_subsong && names[p_subsong].length() ) {
-                    p_info.meta_set( "album", mod->get_metadata( *key ).c_str() );
+                if ( names.size() > p_subsong && !names[p_subsong].empty() ) {
+					if (!value.empty())
+						p_info.meta_set( "album", value.c_str() );
                     p_info.meta_set( "title", names[p_subsong].c_str() );
                     continue;
                 }
             }
-			p_info.meta_set( (*key).c_str(), mod->get_metadata( *key ).c_str() );
+			if (!value.empty())
+				p_info.meta_set( (*key).c_str(), value.c_str() );
 		}
 		int i = 0;
 		std::vector<std::string> _names = mod->get_sample_names();
