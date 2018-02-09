@@ -1,8 +1,13 @@
-//#define BUILD_VERSION ""
-#define BUILD_VERSION "+1"
+#define BUILD_VERSION ""
+//#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2018-02-05 08:41 UTC - kode54
+- Updated libopenmpt to version 0.3.6 with important security and bug fixes,
+  and new features.
+- Version is now 0.3.6
 
 2018-01-29 23:29 UTC - kode54
 - Updated file info reading to not return empty strings
