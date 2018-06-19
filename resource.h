@@ -6,6 +6,7 @@
 #define IDD_MONITOR                     104
 #define IDC_SAMPLERATE                  1000
 #define IDC_INTERPOLATION               1001
+#define IDC_SAMPLERATE2                 1002
 #define IDC_LOOPS                       1003
 #define IDC_CHANNELS                    1004
 #define IDC_GAIN                        1026
@@ -19,6 +20,7 @@
 #define IDC_TEMPO                       1034
 #define IDC_PITCH_TEXT                  1035
 #define IDC_TEMPO_TEXT                  1036
+#define IDC_LENGTH                      1037
 #define IDC_OVERRIDE                    1301
 #define IDC_RESET                       1302
 #define IDC_VOICE1                      1303
@@ -92,7 +94,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        104
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1037
+#define _APS_NEXT_CONTROL_VALUE         1038
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

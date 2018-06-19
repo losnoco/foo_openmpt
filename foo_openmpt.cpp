@@ -4,6 +4,11 @@
 /*
 	change log
 
+2018-06-19 02:29 UTC - kode54
+- Updated libopenmpt to version 0.3.10 with security and bug fixes.
+- Added a minimum song length check, to help eliminate subsong pollution.
+- Version is now 0.3.10
+
 2018-05-02 03:08 UTC - kode54
 - Updated libopenmpt to version 0.3.9 with security and bug fixes.
 - Version is now 0.3.9
@@ -121,6 +126,14 @@ static const GUID guid_cfg_ramping =
 static const GUID guid_cfg_history_samplerate =
 { 0xcb7754e9, 0xf36c, 0x4270,{ 0x9e, 0x7a, 0x7a, 0x12, 0x25, 0x15, 0x90, 0xcb } };
 
+// {36FCD588-A661-4ED9-94B5-5C7AE662A27E}
+static const GUID guid_cfg_length =
+{ 0x36fcd588, 0xa661, 0x4ed9,{ 0x94, 0xb5, 0x5c, 0x7a, 0xe6, 0x62, 0xa2, 0x7e } };
+
+// {5B8F75B0-6343-4F02-808D-71DF821A5EAE}
+static const GUID guid_cfg_history_length =
+{ 0x5b8f75b0, 0x6343, 0x4f02,{ 0x80, 0x8d, 0x71, 0xdf, 0x82, 0x1a, 0x5e, 0xae } };
+
 // {E4836CC0-17FB-433C-A18F-45D954201F92}
 static const GUID guid_ui_element =
 { 0xe4836cc0, 0x17fb, 0x433c,{ 0xa1, 0x8f, 0x45, 0xd9, 0x54, 0x20, 0x1f, 0x92 } };
@@ -166,7 +179,8 @@ enum {
 	default_cfg_repeat = 0,
 	default_cfg_filter = 8,
 	default_cfg_amiga = 1,
-	default_cfg_ramping = -1
+	default_cfg_ramping = -1,
+	default_cfg_length = 10
 };
 
 static cfg_int cfg_samplerate(guid_cfg_samplerate, default_cfg_samplerate);
@@ -177,6 +191,7 @@ static cfg_int cfg_repeat(guid_cfg_repeat, default_cfg_repeat);
 static cfg_int cfg_filter(guid_cfg_filter, default_cfg_filter);
 static cfg_int cfg_amiga(guid_cfg_amiga, default_cfg_amiga);
 static cfg_int cfg_ramping(guid_cfg_ramping, default_cfg_ramping);
+static cfg_int cfg_length(guid_cfg_length, default_cfg_length);
 
 struct foo_openmpt_settings {
 	int samplerate;
@@ -187,6 +202,7 @@ struct foo_openmpt_settings {
 	int interpolationfilterlength;
 	int ramping;
 	bool use_amiga_resampler;
+	int minimum_length;
 	foo_openmpt_settings() {
 
 		/*
@@ -217,6 +233,8 @@ struct foo_openmpt_settings {
 		use_amiga_resampler = !!cfg_amiga;
 
 		ramping = cfg_ramping;
+
+		minimum_length = cfg_length;
 	}
 };
 
@@ -293,6 +311,7 @@ public:
 		mod->set_render_param( openmpt::module::RENDER_INTERPOLATIONFILTER_LENGTH, settings.interpolationfilterlength );
 		mod->set_render_param( openmpt::module::RENDER_VOLUMERAMPING_STRENGTH, settings.ramping );
 		mod->ctl_set( "render.resampler.emulate_amiga", settings.use_amiga_resampler ? "1" : "0" );
+		minimum_length = (double)settings.minimum_length;
 	}
     void get_info(t_uint32 p_subsong,file_info & p_info,abort_callback & p_abort) {
 		p_info.set_length( lengths[p_subsong] );
@@ -357,10 +376,19 @@ public:
 		return m_file->get_stats(p_abort);
 	}
     t_uint32 get_subsong_count() {
-        return mod->get_num_subsongs();
+		int32_t num_subsongs = mod->get_num_subsongs();
+		int32_t computed_subsongs = num_subsongs;
+		this->computed_subsongs.clear();
+		for (int32_t i = 0; i < num_subsongs; ++i) {
+			if (lengths[i] < minimum_length)
+				--computed_subsongs;
+			else
+				this->computed_subsongs.push_back(i);
+		}
+		return computed_subsongs;
     }
     t_uint32 get_subsong(t_uint32 p_index) {
-        return p_index;
+        return computed_subsongs[p_index];
     }
 	void decode_initialize(t_uint32 p_subsong,unsigned p_flags,abort_callback & p_abort) {
 		m_file->reopen(p_abort); // equivalent to seek to zero, except it also works on nonseekable streams
@@ -526,6 +554,8 @@ private:
 	std::vector<float> buffer;
     std::vector<double> lengths;
     std::vector<std::string> names;
+	std::vector<int32_t> computed_subsongs;
+	double minimum_length;
 	bool dyn_meta_reported;
 	std::size_t last_count;
 	int dyn_order, dyn_row, dyn_speed, dyn_tempo, dyn_channels, dyn_max_channels;
@@ -573,6 +603,8 @@ static cfg_dropdown_history cfg_history_samplerate(guid_cfg_history_samplerate, 
 
 static const int srate_tab[] = { 8000,11025,16000,22050,24000,32000,44100,48000,64000,88200,96000 };
 
+static cfg_dropdown_history cfg_history_length(guid_cfg_history_length, 16);
+
 class CMyPreferences : public CDialogImpl<CMyPreferences>, public preferences_page_instance {
 public:
 	//Constructor - invoked by preferences_page_impl helpers - don't do Create() in here, preferences_page_impl does this for us
@@ -593,8 +625,11 @@ public:
 	BEGIN_MSG_MAP(CMyPreferences)
 		MSG_WM_INITDIALOG(OnInitDialog)
 		COMMAND_HANDLER_EX(IDC_SAMPLERATE, CBN_EDITCHANGE, OnEditChange)
+		COMMAND_HANDLER_EX(IDC_LENGTH, CBN_EDITCHANGE, OnEditChange)
 		COMMAND_HANDLER_EX(IDC_SAMPLERATE, CBN_SELCHANGE, OnSelectionChange)
+		COMMAND_HANDLER_EX(IDC_LENGTH, CBN_SELCHANGE, OnSelectionChange)
 		DROPDOWN_HISTORY_HANDLER(IDC_SAMPLERATE, cfg_history_samplerate)
+		DROPDOWN_HISTORY_HANDLER(IDC_LENGTH, cfg_history_length)
 		COMMAND_HANDLER_EX(IDC_CHANNELS, CBN_SELCHANGE, OnSelectionChange)
 		COMMAND_HANDLER_EX(IDC_INTERPOLATION, CBN_SELCHANGE, OnSelectionChange)
 		COMMAND_HANDLER_EX(IDC_LOOPS, CBN_SELCHANGE, OnSelectionChange)
@@ -617,7 +652,7 @@ private:
 
 	const preferences_page_callback::ptr m_callback;
 
-	CComboBox m_combo_samplerate, m_combo_channels, m_combo_filter, m_combo_loops;
+	CComboBox m_combo_samplerate, m_combo_channels, m_combo_filter, m_combo_loops, m_combo_length;
 	CTrackBarCtrl m_slider_gain, m_slider_stereo, m_slider_ramping;
 	CCheckBox m_check_amiga;
 
@@ -647,6 +682,18 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM) {
 	m_combo_samplerate = GetDlgItem(IDC_SAMPLERATE);
 	cfg_history_samplerate.setup_dropdown(m_combo_samplerate);
 	m_combo_samplerate.SetCurSel(0);
+
+	for (n = 11; n--;) {
+		if (n != cfg_length) {
+			_itoa(n, temp, 10);
+			cfg_history_length.add_item(temp);
+		}
+	}
+	_itoa(cfg_length, temp, 10);
+	cfg_history_length.add_item(temp);
+	m_combo_length = GetDlgItem(IDC_LENGTH);
+	cfg_history_length.setup_dropdown(m_combo_length);
+	m_combo_length.SetCurSel(0);
 
 	m_combo_channels = GetDlgItem(IDC_CHANNELS);
 	uSendMessageText(m_combo_channels, CB_ADDSTRING, 0, "mono");
@@ -788,6 +835,7 @@ t_uint32 CMyPreferences::get_state() {
 
 void CMyPreferences::reset() {
 	SetDlgItemInt(IDC_SAMPLERATE, default_cfg_samplerate, FALSE);
+	SetDlgItemInt(IDC_LENGTH, default_cfg_length, FALSE);
 	m_combo_channels.SetCurSel(channels_to_dialog[default_cfg_channels]);
 	m_combo_filter.SetCurSel(filter_to_dialog[default_cfg_filter]);
 	m_combo_loops.SetCurSel(default_cfg_repeat + 1);
@@ -812,6 +860,12 @@ void CMyPreferences::apply() {
 	_itoa(t, temp, 10);
 	cfg_history_samplerate.add_item(temp);
 	cfg_samplerate = t;
+	t = GetDlgItemInt(IDC_LENGTH, NULL, FALSE);
+	if (t > 20) t = 20;
+	SetDlgItemInt(IDC_LENGTH, t, FALSE);
+	_itoa(t, temp, 10);
+	cfg_history_length.add_item(temp);
+	cfg_length = t;
 	t = m_combo_channels.GetCurSel();
 	if (t >= 0 && t < tabsize(dialog_to_channels))
 		cfg_channels = dialog_to_channels[t];
@@ -840,6 +894,7 @@ bool CMyPreferences::HasChanged() {
 	bool changed = false;
 	int t;
 	if (!changed && GetDlgItemInt(IDC_SAMPLERATE, NULL, FALSE) != cfg_samplerate) changed = true;
+	if (!changed && GetDlgItemInt(IDC_LENGTH, NULL, FALSE) != cfg_length) changed = true;
 	if (!changed) {
 		t = m_combo_channels.GetCurSel();
 		if (t >= 0 && t < tabsize(dialog_to_channels) && dialog_to_channels[t] != cfg_channels)
