@@ -4,6 +4,10 @@
 /*
 	change log
 
+2018-07-29 02:10 UTC - kode54
+- Updated libopenmpt to version 0.3.11 with security and bug fixes.
+- Version is now 0.3.11
+
 2018-06-19 02:29 UTC - kode54
 - Updated libopenmpt to version 0.3.10 with security and bug fixes.
 - Added a minimum song length check, to help eliminate subsong pollution.
