@@ -4,6 +4,10 @@
 /*
 	change log
 
+2018-10-03 07:32 UTC - kode54
+- Updated libopenmpt to version 0.3.12 with bug fixes and minor feature changes.
+- Version is now 0.3.12
+
 2018-07-29 02:10 UTC - kode54
 - Updated libopenmpt to version 0.3.11 with security and bug fixes.
 - Version is now 0.3.11
