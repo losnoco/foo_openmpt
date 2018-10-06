@@ -1,8 +1,12 @@
-#define BUILD_VERSION ""
-//#define BUILD_VERSION "+1"
+//#define BUILD_VERSION ""
+#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2018-10-06 03:46 UTC - kode54
+- Added $info(encoding) -> "synthesized"
+- Version is now 0.3.12+1
 
 2018-10-03 07:32 UTC - kode54
 - Updated libopenmpt to version 0.3.12 with bug fixes and minor feature changes.
@@ -324,6 +328,7 @@ public:
     void get_info(t_uint32 p_subsong,file_info & p_info,abort_callback & p_abort) {
 		p_info.set_length( lengths[p_subsong] );
 		p_info.info_set_int( "bitspersample", 32 );
+		p_info.info_set("encoding", "synthesized");
 		p_info.info_set_int(field_patterns, mod->get_num_patterns());
 		p_info.info_set_int(field_orders, mod->get_num_orders());
 		p_info.info_set_int(field_channels, mod->get_num_channels());
