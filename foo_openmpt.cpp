@@ -1,8 +1,12 @@
-//#define BUILD_VERSION ""
-#define BUILD_VERSION "+1"
+#define BUILD_VERSION ""
+//#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2018-10-22 10:02 UTC - kode54
+- Updated libopenmpt to version 0.3.13 with security and bug fixes.
+- Version is now 0.3.13
 
 2018-10-06 03:46 UTC - kode54
 - Added $info(encoding) -> "synthesized"
