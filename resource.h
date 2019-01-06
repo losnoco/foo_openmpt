@@ -21,6 +21,7 @@
 #define IDC_PITCH_TEXT                  1035
 #define IDC_TEMPO_TEXT                  1036
 #define IDC_LENGTH                      1037
+#define IDC_FADE                        1037
 #define IDC_OVERRIDE                    1301
 #define IDC_RESET                       1302
 #define IDC_VOICE1                      1303

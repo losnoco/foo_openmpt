@@ -4,6 +4,11 @@
 /*
 	change log
 
+2019-01-06 00:47 UTC - kode54
+- Updated libopenmpt to version 0.4.0 with bug fixes and extensive feature changes.
+- Implemented support for configurable fade time in addition to repeat count.
+- Version is now 0.4.0
+
 2018-10-22 10:02 UTC - kode54
 - Updated libopenmpt to version 0.3.13 with security and bug fixes.
 - Version is now 0.3.13
@@ -142,13 +147,13 @@ static const GUID guid_cfg_ramping =
 static const GUID guid_cfg_history_samplerate =
 { 0xcb7754e9, 0xf36c, 0x4270,{ 0x9e, 0x7a, 0x7a, 0x12, 0x25, 0x15, 0x90, 0xcb } };
 
-// {36FCD588-A661-4ED9-94B5-5C7AE662A27E}
-static const GUID guid_cfg_length =
-{ 0x36fcd588, 0xa661, 0x4ed9,{ 0x94, 0xb5, 0x5c, 0x7a, 0xe6, 0x62, 0xa2, 0x7e } };
+// {AC048DB8-DEBF-4C6E-9060-80464225B04C}
+static const GUID guid_cfg_fade =
+{ 0xac048db8, 0xdebf, 0x4c6e, { 0x90, 0x60, 0x80, 0x46, 0x42, 0x25, 0xb0, 0x4c } };
 
-// {5B8F75B0-6343-4F02-808D-71DF821A5EAE}
-static const GUID guid_cfg_history_length =
-{ 0x5b8f75b0, 0x6343, 0x4f02,{ 0x80, 0x8d, 0x71, 0xdf, 0x82, 0x1a, 0x5e, 0xae } };
+// {89752B48-A3DE-4BA4-8952-C508956FB0EA}
+static const GUID guid_cfg_history_fade =
+{ 0x89752b48, 0xa3de, 0x4ba4, { 0x89, 0x52, 0xc5, 0x8, 0x95, 0x6f, 0xb0, 0xea } };
 
 // {E4836CC0-17FB-433C-A18F-45D954201F92}
 static const GUID guid_ui_element =
@@ -196,7 +201,7 @@ enum {
 	default_cfg_filter = 8,
 	default_cfg_amiga = 1,
 	default_cfg_ramping = -1,
-	default_cfg_length = 10
+	default_cfg_fade = 0
 };
 
 static cfg_int cfg_samplerate(guid_cfg_samplerate, default_cfg_samplerate);
@@ -207,7 +212,7 @@ static cfg_int cfg_repeat(guid_cfg_repeat, default_cfg_repeat);
 static cfg_int cfg_filter(guid_cfg_filter, default_cfg_filter);
 static cfg_int cfg_amiga(guid_cfg_amiga, default_cfg_amiga);
 static cfg_int cfg_ramping(guid_cfg_ramping, default_cfg_ramping);
-static cfg_int cfg_length(guid_cfg_length, default_cfg_length);
+static cfg_int cfg_fade(guid_cfg_fade, default_cfg_fade);
 
 struct foo_openmpt_settings {
 	int samplerate;
@@ -218,7 +223,7 @@ struct foo_openmpt_settings {
 	int interpolationfilterlength;
 	int ramping;
 	bool use_amiga_resampler;
-	int minimum_length;
+	int fade_time;
 	foo_openmpt_settings() {
 
 		/*
@@ -250,7 +255,7 @@ struct foo_openmpt_settings {
 
 		ramping = cfg_ramping;
 
-		minimum_length = cfg_length;
+		fade_time = cfg_fade;
 	}
 };
 
@@ -321,13 +326,13 @@ public:
 			throw exception_io_data();
 		}
 		settings = foo_openmpt_settings();
-		mod->set_repeat_count( settings.repeatcount );
 		mod->set_render_param( openmpt::module::RENDER_MASTERGAIN_MILLIBEL, settings.mastergain_millibel );
 		mod->set_render_param( openmpt::module::RENDER_STEREOSEPARATION_PERCENT, settings.stereoseparation );
 		mod->set_render_param( openmpt::module::RENDER_INTERPOLATIONFILTER_LENGTH, settings.interpolationfilterlength );
 		mod->set_render_param( openmpt::module::RENDER_VOLUMERAMPING_STRENGTH, settings.ramping );
 		mod->ctl_set( "render.resampler.emulate_amiga", settings.use_amiga_resampler ? "1" : "0" );
-		minimum_length = (double)settings.minimum_length;
+		mod->ctl_set("play.at_end", "continue");
+		fade_time = (double)(settings.fade_time * 0.001);
 	}
     void get_info(t_uint32 p_subsong,file_info & p_info,abort_callback & p_abort) {
 		p_info.set_length( lengths[p_subsong] );
@@ -393,26 +398,22 @@ public:
 		return m_file->get_stats(p_abort);
 	}
     t_uint32 get_subsong_count() {
-		int32_t num_subsongs = mod->get_num_subsongs();
-		int32_t computed_subsongs = num_subsongs;
-		this->computed_subsongs.clear();
-		for (int32_t i = 0; i < num_subsongs; ++i) {
-			if (lengths[i] < minimum_length)
-				--computed_subsongs;
-			else
-				this->computed_subsongs.push_back(i);
-		}
-		return computed_subsongs;
+		return mod->get_num_subsongs();
     }
     t_uint32 get_subsong(t_uint32 p_index) {
-        return computed_subsongs[p_index];
+        return p_index;
     }
 	void decode_initialize(t_uint32 p_subsong,unsigned p_flags,abort_callback & p_abort) {
 		m_file->reopen(p_abort); // equivalent to seek to zero, except it also works on nonseekable streams
         mod->select_subsong(p_subsong);
+		current_repeatcount = 0;
+		repeatcount = (unsigned)(int)(settings.repeatcount + 1);
         if (p_flags & input_flag_no_looping) {
-            mod->set_repeat_count(0);
+			if (repeatcount == 0) {
+				repeatcount = 1;
+			}
         }
+		current_fade_time = 0.0;
 		dyn_order = -1; dyn_row = -1; dyn_speed = -1; dyn_tempo = -1;
 		dyn_channels = -1; dyn_max_channels = 0; dyn_pattern = -1;
 		dyn_meta_reported = false;
@@ -428,47 +429,125 @@ public:
 	bool decode_run(audio_chunk & p_chunk,abort_callback & p_abort) {
 		monitor_update(mod);
 		last_count = 0;
+		std::size_t count = 0;
+		bool has_looped = false;
 		if ( settings.channels == 1 ) {
 
-			std::size_t count = mod->read( settings.samplerate, buffersize, left.data() );
-			if ( count == 0 ) {
+			do {
+				count = mod->read(settings.samplerate, buffersize, left.data());
+				if (count == 0) {
+					++current_repeatcount;
+					if (!has_looped)
+						has_looped = true;
+					else
+						return false;
+				}
+			} while (count == 0);
+			if (repeatcount > 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
 				return false;
-			}
 			last_count = count;
 			for ( std::size_t frame = 0; frame < count; frame++ ) {
 				buffer[frame*1+0] = left[frame];
+			}
+			if (repeatcount >= 0 && current_repeatcount >= repeatcount) {
+				if (fade_time > 0.0 && current_fade_time < fade_time) {
+					double fade_level = (fade_time - current_fade_time) / (fade_time);
+					double fade_step = (fade_time) / (double)(settings.samplerate);
+					for (std::size_t frame = 0; frame < count; frame++) {
+						buffer[frame * 1 + 0] *= fade_level;
+						fade_level -= fade_step;
+						if (fade_level <= 0.0) {
+							count = frame + 1;
+							break;
+						}
+					}
+					current_fade_time += (count / (double)(settings.samplerate));
+				}
+				else return false;
 			}
 			p_chunk.set_data_32( buffer.data(), count, settings.channels, settings.samplerate );
 			return true;
 
 		} else if ( settings.channels == 2 ) {
 
-			std::size_t count = mod->read( settings.samplerate, buffersize, left.data(), right.data() );
-			if ( count == 0 ) {
+			do {
+				count = mod->read(settings.samplerate, buffersize, left.data(), right.data());
+				if (count == 0) {
+					++current_repeatcount;
+					if (!has_looped)
+						has_looped = true;
+					else
+						return false;
+				}
+			} while (count == 0);
+			if (repeatcount >= 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
 				return false;
-			}
 			last_count = count;
-			for ( std::size_t frame = 0; frame < count; frame++ ) {
-				buffer[frame*2+0] = left[frame];
-				buffer[frame*2+1] = right[frame];
+			for (std::size_t frame = 0; frame < count; frame++) {
+				buffer[frame * 2 + 0] = left[frame];
+				buffer[frame * 2 + 1] = right[frame];
 			}
-			p_chunk.set_data_32( buffer.data(), count, settings.channels, settings.samplerate );
+			if (repeatcount >= 0 && current_repeatcount >= repeatcount) {
+				if (fade_time > 0.0 && current_fade_time < fade_time) {
+					double fade_level = (fade_time - current_fade_time) / (fade_time);
+					double fade_step = (fade_time) / (double)(settings.samplerate);
+					for (std::size_t frame = 0; frame < count; frame++) {
+						buffer[frame * 2 + 0] *= fade_level;
+						buffer[frame * 2 + 1] *= fade_level;
+						fade_level -= fade_step;
+						if (fade_level <= 0.0) {
+							count = frame + 1;
+							break;
+						}
+					}
+					current_fade_time += (count / (double)(settings.samplerate));
+				}
+				else return false;
+			}
+			p_chunk.set_data_32(buffer.data(), count, settings.channels, settings.samplerate);
 			return true;
 
 		} else if ( settings.channels == 4 ) {
 
-			std::size_t count = mod->read( settings.samplerate, buffersize, left.data(), right.data(), rear_left.data(), rear_right.data() );
-			if ( count == 0 ) {
+			do {
+				count = mod->read(settings.samplerate, buffersize, left.data(), right.data(), rear_left.data(), rear_right.data());
+				if (count == 0) {
+					++current_repeatcount;
+					if (!has_looped)
+						has_looped = true;
+					else
+						return false;
+				}
+			} while (count == 0);
+			if (repeatcount >= 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
 				return false;
-			}
 			last_count = count;
-			for ( std::size_t frame = 0; frame < count; frame++ ) {
-				buffer[frame*4+0] = left[frame];
-				buffer[frame*4+1] = right[frame];
-				buffer[frame*4+2] = rear_left[frame];
-				buffer[frame*4+3] = rear_right[frame];
+			for (std::size_t frame = 0; frame < count; frame++) {
+				buffer[frame * 4 + 0] = left[frame];
+				buffer[frame * 4 + 1] = right[frame];
+				buffer[frame * 4 + 2] = rear_left[frame];
+				buffer[frame * 4 + 3] = rear_right[frame];
 			}
-			p_chunk.set_data_32( buffer.data(), count, settings.channels, settings.samplerate );
+			if (repeatcount >= 0 && current_repeatcount >= repeatcount) {
+				if (fade_time > 0.0 && current_fade_time < fade_time) {
+					double fade_level = (fade_time - current_fade_time) / (fade_time);
+					double fade_step = (fade_time) / (double)(settings.samplerate);
+					for (std::size_t frame = 0; frame < count; frame++) {
+						buffer[frame * 4 + 0] *= fade_level;
+						buffer[frame * 4 + 1] *= fade_level;
+						buffer[frame * 4 + 2] *= fade_level;
+						buffer[frame * 4 + 3] *= fade_level;
+						fade_level -= fade_step;
+						if (fade_level <= 0.0) {
+							count = frame + 1;
+							break;
+						}
+					}
+					current_fade_time += (count / (double)(settings.samplerate));
+				}
+				else return false;
+			}
+			p_chunk.set_data_32(buffer.data(), count, settings.channels, settings.samplerate);
 			return true;
 
 		} else {
@@ -571,8 +650,8 @@ private:
 	std::vector<float> buffer;
     std::vector<double> lengths;
     std::vector<std::string> names;
-	std::vector<int32_t> computed_subsongs;
-	double minimum_length;
+	std::size_t repeatcount, current_repeatcount;
+	double fade_time, current_fade_time;
 	bool dyn_meta_reported;
 	std::size_t last_count;
 	int dyn_order, dyn_row, dyn_speed, dyn_tempo, dyn_channels, dyn_max_channels;
@@ -620,7 +699,7 @@ static cfg_dropdown_history cfg_history_samplerate(guid_cfg_history_samplerate, 
 
 static const int srate_tab[] = { 8000,11025,16000,22050,24000,32000,44100,48000,64000,88200,96000 };
 
-static cfg_dropdown_history cfg_history_length(guid_cfg_history_length, 16);
+static cfg_dropdown_history cfg_history_fade(guid_cfg_history_fade, 16);
 
 class CMyPreferences : public CDialogImpl<CMyPreferences>, public preferences_page_instance {
 public:
@@ -642,11 +721,11 @@ public:
 	BEGIN_MSG_MAP(CMyPreferences)
 		MSG_WM_INITDIALOG(OnInitDialog)
 		COMMAND_HANDLER_EX(IDC_SAMPLERATE, CBN_EDITCHANGE, OnEditChange)
-		COMMAND_HANDLER_EX(IDC_LENGTH, CBN_EDITCHANGE, OnEditChange)
+		COMMAND_HANDLER_EX(IDC_FADE, CBN_EDITCHANGE, OnEditChange)
 		COMMAND_HANDLER_EX(IDC_SAMPLERATE, CBN_SELCHANGE, OnSelectionChange)
-		COMMAND_HANDLER_EX(IDC_LENGTH, CBN_SELCHANGE, OnSelectionChange)
+		COMMAND_HANDLER_EX(IDC_FADE, CBN_SELCHANGE, OnSelectionChange)
 		DROPDOWN_HISTORY_HANDLER(IDC_SAMPLERATE, cfg_history_samplerate)
-		DROPDOWN_HISTORY_HANDLER(IDC_LENGTH, cfg_history_length)
+		DROPDOWN_HISTORY_HANDLER(IDC_FADE, cfg_history_fade)
 		COMMAND_HANDLER_EX(IDC_CHANNELS, CBN_SELCHANGE, OnSelectionChange)
 		COMMAND_HANDLER_EX(IDC_INTERPOLATION, CBN_SELCHANGE, OnSelectionChange)
 		COMMAND_HANDLER_EX(IDC_LOOPS, CBN_SELCHANGE, OnSelectionChange)
@@ -669,7 +748,7 @@ private:
 
 	const preferences_page_callback::ptr m_callback;
 
-	CComboBox m_combo_samplerate, m_combo_channels, m_combo_filter, m_combo_loops, m_combo_length;
+	CComboBox m_combo_samplerate, m_combo_channels, m_combo_filter, m_combo_loops, m_combo_fade;
 	CTrackBarCtrl m_slider_gain, m_slider_stereo, m_slider_ramping;
 	CCheckBox m_check_amiga;
 
@@ -700,17 +779,17 @@ BOOL CMyPreferences::OnInitDialog(CWindow, LPARAM) {
 	cfg_history_samplerate.setup_dropdown(m_combo_samplerate);
 	m_combo_samplerate.SetCurSel(0);
 
-	for (n = 11; n--;) {
-		if (n != cfg_length) {
-			_itoa(n, temp, 10);
-			cfg_history_length.add_item(temp);
+	for (n = 7; n--;) {
+		if (n * 1000 != cfg_fade) {
+			_itoa(n * 1000, temp, 10);
+			cfg_history_fade.add_item(temp);
 		}
 	}
-	_itoa(cfg_length, temp, 10);
-	cfg_history_length.add_item(temp);
-	m_combo_length = GetDlgItem(IDC_LENGTH);
-	cfg_history_length.setup_dropdown(m_combo_length);
-	m_combo_length.SetCurSel(0);
+	_itoa(cfg_fade, temp, 10);
+	cfg_history_fade.add_item(temp);
+	m_combo_fade = GetDlgItem(IDC_FADE);
+	cfg_history_fade.setup_dropdown(m_combo_fade);
+	m_combo_fade.SetCurSel(0);
 
 	m_combo_channels = GetDlgItem(IDC_CHANNELS);
 	uSendMessageText(m_combo_channels, CB_ADDSTRING, 0, "mono");
@@ -852,7 +931,7 @@ t_uint32 CMyPreferences::get_state() {
 
 void CMyPreferences::reset() {
 	SetDlgItemInt(IDC_SAMPLERATE, default_cfg_samplerate, FALSE);
-	SetDlgItemInt(IDC_LENGTH, default_cfg_length, FALSE);
+	SetDlgItemInt(IDC_FADE, default_cfg_fade, FALSE);
 	m_combo_channels.SetCurSel(channels_to_dialog[default_cfg_channels]);
 	m_combo_filter.SetCurSel(filter_to_dialog[default_cfg_filter]);
 	m_combo_loops.SetCurSel(default_cfg_repeat + 1);
@@ -877,12 +956,12 @@ void CMyPreferences::apply() {
 	_itoa(t, temp, 10);
 	cfg_history_samplerate.add_item(temp);
 	cfg_samplerate = t;
-	t = GetDlgItemInt(IDC_LENGTH, NULL, FALSE);
-	if (t > 20) t = 20;
-	SetDlgItemInt(IDC_LENGTH, t, FALSE);
+	t = GetDlgItemInt(IDC_FADE, NULL, FALSE);
+	if (t > 15000) t = 15000;
+	SetDlgItemInt(IDC_FADE, t, FALSE);
 	_itoa(t, temp, 10);
-	cfg_history_length.add_item(temp);
-	cfg_length = t;
+	cfg_history_fade.add_item(temp);
+	cfg_fade = t;
 	t = m_combo_channels.GetCurSel();
 	if (t >= 0 && t < tabsize(dialog_to_channels))
 		cfg_channels = dialog_to_channels[t];
@@ -911,7 +990,7 @@ bool CMyPreferences::HasChanged() {
 	bool changed = false;
 	int t;
 	if (!changed && GetDlgItemInt(IDC_SAMPLERATE, NULL, FALSE) != cfg_samplerate) changed = true;
-	if (!changed && GetDlgItemInt(IDC_LENGTH, NULL, FALSE) != cfg_length) changed = true;
+	if (!changed && GetDlgItemInt(IDC_FADE, NULL, FALSE) != cfg_fade) changed = true;
 	if (!changed) {
 		t = m_combo_channels.GetCurSel();
 		if (t >= 0 && t < tabsize(dialog_to_channels) && dialog_to_channels[t] != cfg_channels)
