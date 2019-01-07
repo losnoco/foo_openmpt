@@ -1,8 +1,12 @@
-#define BUILD_VERSION ""
-//#define BUILD_VERSION "+1"
+//#define BUILD_VERSION ""
+#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2019-01-07 08:54 UTC - kode54
+- Fixed infinite looping setting to actually play something
+- Version is now 0.4.0+1
 
 2019-01-06 00:47 UTC - kode54
 - Updated libopenmpt to version 0.4.0 with bug fixes and extensive feature changes.
@@ -449,7 +453,7 @@ public:
 			for ( std::size_t frame = 0; frame < count; frame++ ) {
 				buffer[frame*1+0] = left[frame];
 			}
-			if (repeatcount >= 0 && current_repeatcount >= repeatcount) {
+			if (repeatcount > 0 && current_repeatcount >= repeatcount) {
 				if (fade_time > 0.0 && current_fade_time < fade_time) {
 					double fade_level = (fade_time - current_fade_time) / (fade_time);
 					double fade_step = (fade_time) / (double)(settings.samplerate);
@@ -480,14 +484,14 @@ public:
 						return false;
 				}
 			} while (count == 0);
-			if (repeatcount >= 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
+			if (repeatcount > 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
 				return false;
 			last_count = count;
 			for (std::size_t frame = 0; frame < count; frame++) {
 				buffer[frame * 2 + 0] = left[frame];
 				buffer[frame * 2 + 1] = right[frame];
 			}
-			if (repeatcount >= 0 && current_repeatcount >= repeatcount) {
+			if (repeatcount > 0 && current_repeatcount >= repeatcount) {
 				if (fade_time > 0.0 && current_fade_time < fade_time) {
 					double fade_level = (fade_time - current_fade_time) / (fade_time);
 					double fade_step = (fade_time) / (double)(settings.samplerate);
@@ -519,7 +523,7 @@ public:
 						return false;
 				}
 			} while (count == 0);
-			if (repeatcount >= 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
+			if (repeatcount > 0 && current_repeatcount >= repeatcount && fade_time == 0.0)
 				return false;
 			last_count = count;
 			for (std::size_t frame = 0; frame < count; frame++) {
@@ -528,7 +532,7 @@ public:
 				buffer[frame * 4 + 2] = rear_left[frame];
 				buffer[frame * 4 + 3] = rear_right[frame];
 			}
-			if (repeatcount >= 0 && current_repeatcount >= repeatcount) {
+			if (repeatcount > 0 && current_repeatcount >= repeatcount) {
 				if (fade_time > 0.0 && current_fade_time < fade_time) {
 					double fade_level = (fade_time - current_fade_time) / (fade_time);
 					double fade_step = (fade_time) / (double)(settings.samplerate);
