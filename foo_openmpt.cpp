@@ -1,8 +1,12 @@
 //#define BUILD_VERSION ""
-#define BUILD_VERSION "+1"
+#define BUILD_VERSION "+2"
 
 /*
 	change log
+
+2019-01-10 04:03 UTC - kode54
+- Implemented Columns UI visualizer panel
+- Version is now 0.4.0+2
 
 2019-01-07 08:54 UTC - kode54
 - Fixed infinite looping setting to actually play something
@@ -97,6 +101,9 @@
 #include "../helpers/window_placement_helper.h"
 #include "../ATLHelpers/ATLHelpersLean.h"
 #include "../ATLHelpers/misc.h"
+
+#include "../columns_ui/columns_ui-sdk/ui_extension.h"
+#include "../columns_ui/columns_ui-sdk/columns_ui_appearance.h"
 
 #include <WindowsX.h>
 
@@ -2044,11 +2051,144 @@ class monitor_menu : public mainmenu_commands {
 	}
 };
 
+/** Our window class */
+class cui_vis_window : public CVisWindow, public uie::container_ui_extension,
+	public columns_ui::colours::common_callback, public columns_ui::fonts::common_callback
+{
+public:
+	cui_vis_window();
+	~cui_vis_window();
+
+	virtual const GUID & get_extension_guid() const;
+	virtual void get_name(pfc::string_base & out)const;
+	virtual void get_category(pfc::string_base & out)const;
+	unsigned get_type() const;
+
+	virtual void on_colour_changed(t_size mask) const;
+	virtual void on_bool_changed(t_size mask) const {}
+
+	virtual void on_font_changed(t_size mask) const;
+
+private:
+	LRESULT on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp);
+
+	virtual class_data & get_class_data()const;
+	virtual void get_menu_items(uie::menu_hook_t & p_hook);
+
+	static const GUID g_extension_guid;
+};
+
+class menu_node_close : public ui_extension::menu_node_command_t
+{
+	service_ptr_t<cui_vis_window> p_this;
+public:
+	virtual bool get_display_data(pfc::string_base & p_out, unsigned & p_displayflags) const
+	{
+		p_out = "Close";
+		p_displayflags = 0;
+		return true;
+	}
+	virtual bool get_description(pfc::string_base & p_out) const
+	{
+		return false;
+	}
+	virtual void execute()
+	{
+		HWND wnd = p_this->get_wnd();
+		uie::window_host_ptr p_host = p_this->get_host();
+		uie::window_ptr(p_this)->destroy_window();
+		p_host->relinquish_ownership(wnd);
+	}
+	menu_node_close(cui_vis_window * wnd) : p_this(wnd) {};
+};
+
+void cui_vis_window::get_menu_items(uie::menu_hook_t & p_hook)
+{
+	p_hook.add_node(new menu_node_close(this));
+};
+
+cui_vis_window::cui_vis_window()
+{
+	deffont = 0;
+	static_api_ptr_t<columns_ui::colours::manager>()->register_common_callback(this);
+	static_api_ptr_t<columns_ui::fonts::manager>()->register_common_callback(this);
+}
+
+cui_vis_window::~cui_vis_window()
+{
+	static_api_ptr_t<columns_ui::fonts::manager>()->deregister_common_callback(this);
+	static_api_ptr_t<columns_ui::colours::manager>()->deregister_common_callback(this);
+}
+
+// Const? !@#)(! YOU
+void cui_vis_window::on_colour_changed(t_size mask) const
+{
+	cui_vis_window *mod_this = (cui_vis_window*)this;
+	mod_this->colors[0] = GetSysColor(ui_color_to_sys_color_index(ui_color_background));
+	mod_this->colors[1] = GetSysColor(ui_color_to_sys_color_index(ui_color_selection));
+	mod_this->colors[2] = GetSysColor(ui_color_to_sys_color_index(ui_color_text));
+}
+
+void cui_vis_window::on_font_changed(t_size mask) const
+{
+	cui_vis_window *mod_this = (cui_vis_window*)this;
+	if (mod_this->deffont) DeleteObject(mod_this->deffont);
+	mod_this->deffont = static_api_ptr_t<columns_ui::fonts::manager>()->get_font(columns_ui::fonts::font_type_items);
+}
+
+LRESULT cui_vis_window::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+	switch (msg)
+	{
+	case WM_CREATE:
+	{
+		on_colour_changed(0);
+		on_font_changed(0);
+
+		RECT rc;
+		::GetClientRect(wnd, &rc);
+
+		Create(wnd, rc, _T("Module Visualizer"), WS_CHILD | WS_VISIBLE);
+	}
+	break;
+	case WM_SIZE:
+		/** Reposition our child window */
+		SetWindowPos(0, 0, 0, LOWORD(lp), HIWORD(lp), SWP_NOZORDER);
+		break;
+	}
+	return ::DefWindowProc(wnd, msg, wp, lp);
+}
+
+cui_vis_window::class_data & cui_vis_window::get_class_data() const
+{
+	__implement_get_class_data(_T("{C2D8590F-F040-4832-A685-155056174A08}"), true);
+}
+
+const GUID & cui_vis_window::get_extension_guid() const
+{
+	return g_extension_guid;
+}
+
+void cui_vis_window::get_name(pfc::string_base & out)const
+{
+	out.set_string("OpenMPT Module Visualizer");
+}
+void cui_vis_window::get_category(pfc::string_base & out)const
+{
+	out.set_string("Panels");
+}
+unsigned cui_vis_window::get_type() const { return uie::type_panel; }
+
+// {ECAA93F5-A809-4432-9564-88A9FDA57E91}
+const GUID cui_vis_window::g_extension_guid =
+{ 0xecaa93f5, 0xa809, 0x4432, { 0x95, 0x64, 0x88, 0xa9, 0xfd, 0xa5, 0x7e, 0x91 } };
+
 static input_factory_t<input_openmpt> g_input_openmpt_factory;
 static preferences_page_factory_t<preferences_page_myimpl> g_config_openmpt_factory;
 static service_factory_single_t<input_file_type_v2_impl_openmpt> g_filetypes;
 static service_factory_single_t<CVisWindowElement> g_element_openmpt_vis_factory;
 static mainmenu_commands_factory_t<monitor_menu> g_mainmenu_commands_monitor_factory;
+static uie::window_factory<cui_vis_window> g_cui_vis_window_factory;
 
 DECLARE_COMPONENT_VERSION("OpenMPT component (kode54 fork)", OPENMPT_API_VERSION_STRING BUILD_VERSION, "libopenmpt based module file player\n\nForked by kode54.");
 
