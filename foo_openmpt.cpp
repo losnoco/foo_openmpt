@@ -1,8 +1,12 @@
 //#define BUILD_VERSION ""
-#define BUILD_VERSION "+2"
+#define BUILD_VERSION "+3"
 
 /*
 	change log
+
+2019-01-11 01:34 UTC - kode54
+- Fixed Columns UI panel to not throw an exception if Columns isn't installed
+- Version is now 0.4.0+3
 
 2019-01-10 04:03 UTC - kode54
 - Implemented Columns UI visualizer panel
@@ -2055,6 +2059,8 @@ class monitor_menu : public mainmenu_commands {
 class cui_vis_window : public CVisWindow, public uie::container_ui_extension,
 	public columns_ui::colours::common_callback, public columns_ui::fonts::common_callback
 {
+	bool registered;
+
 public:
 	cui_vis_window();
 	~cui_vis_window();
@@ -2107,17 +2113,29 @@ void cui_vis_window::get_menu_items(uie::menu_hook_t & p_hook)
 	p_hook.add_node(new menu_node_close(this));
 };
 
+// Oops, looks like we get instantiated even if CUI isn't installed
 cui_vis_window::cui_vis_window()
 {
+	registered = false;
 	deffont = 0;
-	static_api_ptr_t<columns_ui::colours::manager>()->register_common_callback(this);
-	static_api_ptr_t<columns_ui::fonts::manager>()->register_common_callback(this);
+	try
+	{
+		static_api_ptr_t<columns_ui::colours::manager>()->register_common_callback(this);
+		static_api_ptr_t<columns_ui::fonts::manager>()->register_common_callback(this);
+		registered = true;
+	}
+	catch (...)
+	{
+	}
 }
 
 cui_vis_window::~cui_vis_window()
 {
-	static_api_ptr_t<columns_ui::fonts::manager>()->deregister_common_callback(this);
-	static_api_ptr_t<columns_ui::colours::manager>()->deregister_common_callback(this);
+	if (registered)
+	{
+		static_api_ptr_t<columns_ui::fonts::manager>()->deregister_common_callback(this);
+		static_api_ptr_t<columns_ui::colours::manager>()->deregister_common_callback(this);
+	}
 }
 
 // Const? !@#)(! YOU
