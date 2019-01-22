@@ -1,8 +1,12 @@
-//#define BUILD_VERSION ""
-#define BUILD_VERSION "+3"
+#define BUILD_VERSION ""
+//#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2019-01-22 13:37 UTC - kode54
+- Updated libopenmpt to version 0.4.2 with bug and security fixes
+- Version is now 0.4.2
 
 2019-01-11 01:34 UTC - kode54
 - Fixed Columns UI panel to not throw an exception if Columns isn't installed
