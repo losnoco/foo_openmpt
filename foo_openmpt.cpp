@@ -1,8 +1,13 @@
-#define BUILD_VERSION ""
-//#define BUILD_VERSION "+1"
+//#define BUILD_VERSION ""
+#define BUILD_VERSION "+1"
 
 /*
 	change log
+
+2019-06-01 02:01 UTC - kode54
+- Fixed mute override so it can support toggling mute for channels that
+  are initially muted, rather than outright unmuting them on startup
+- Version is now 0.4.5+1
 
 2019-05-27 22:50 UTC - kode54
 - Updated libopenmpt to version 0.4.5 with security and bug fixes
@@ -210,6 +215,7 @@ t_uint64                   dlg_channels_allowed = 0;
 
 bool                       dlg_changed_controls = false;
 t_uint64                   dlg_mute_mask = 0;
+t_uint64                   dlg_initial_mute_mask = 0;
 int                        dlg_pitch = 100;
 int                        dlg_tempo = 100;
 
@@ -1769,6 +1775,17 @@ static void initialize_channels() {
 			}
 		}
 	}
+
+	dlg_initial_mute_mask = 0;
+
+	if (dlg_module && dlg_interactive) {
+		int n_channels = dlg_module->get_num_channels();
+		for (int channel = 0; channel < n_channels; ++channel) {
+			if (dlg_interactive->get_channel_mute_status(channel)) {
+				dlg_initial_mute_mask |= t_uint64(1) << channel;
+			}
+		}
+	}
 }
 
 static void mute_channels(openmpt_handle & mod, openmpt::ext::interactive *interactive, t_uint64 mask) {
@@ -1802,9 +1819,12 @@ void monitor_start(openmpt_handle & mod, const char * p_path, bool playback) {
 
 		initialize_channels();
 	}
+	else if (strcmp(dlg_path, p_path) != 0) {
+		dlg_initial_mute_mask = 0; // ugh
+	}
 
 	if (cfg_control_override) {
-		mute_channels(mod, interactive, dlg_mute_mask);
+		mute_channels(mod, interactive, dlg_mute_mask ^ dlg_initial_mute_mask);
 		adjust_speed(interactive, dlg_pitch, dlg_tempo);
 	}
 }
@@ -1818,7 +1838,7 @@ void monitor_update(openmpt_handle & mod)
 			dlg_changed_controls = false;
 
 			bool enabled = !!cfg_control_override;
-			t_uint64 mask = enabled ? dlg_mute_mask : 0;
+			t_uint64 mask = (enabled ? dlg_mute_mask : 0) ^ dlg_initial_mute_mask;
 			int pitch = enabled ? dlg_pitch : 100;
 			int tempo = enabled ? dlg_tempo : 100;
 
@@ -1964,13 +1984,19 @@ class monitor_dialog {
 			}
 			else if (wp - IDC_VOICE1 < 64) {
 				unsigned voice = wp - IDC_VOICE1;
-				t_uint64 mask = ~(1 << voice);
-				t_uint64 bit = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0) ? 0 : (1 << voice);
+				t_uint64 mask = (1 << voice);
+				t_uint64 invmask = ~mask;
+				t_uint64 bit;
+				
+				if (dlg_initial_mute_mask & mask)
+					bit = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0) ? mask : 0;
+				else
+					bit = uSendMessage((HWND)lp, BM_GETCHECK, 0, 0) ? 0 : mask;
 
 				insync(dlg_lock);
 
 				dlg_changed_controls = true;
-				dlg_mute_mask = (dlg_mute_mask & mask) | bit;
+				dlg_mute_mask = (dlg_mute_mask & invmask) | bit;
 			}
 			break;
 		}
@@ -1992,7 +2018,7 @@ class monitor_dialog {
 		HWND w;
 		for (unsigned i = 0; i < 64; ++i) {
 			w = GetDlgItem(wnd, IDC_VOICE1 + i);
-			uSendMessage(w, BM_SETCHECK, !((dlg_mute_mask >> i) & 1), 0);
+			uSendMessage(w, BM_SETCHECK, !(((dlg_mute_mask ^ dlg_initial_mute_mask) >> i) & 1), 0);
 			EnableWindow(w, enable);
 			ShowWindow(w, ((t_uint64(1) << i) & dlg_channels_allowed) ? SW_SHOWNA : SW_HIDE);
 		}
